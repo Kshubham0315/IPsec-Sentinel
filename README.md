@@ -1,816 +1,1224 @@
-# 🔐 AI-Powered IPsec VPN Protocol Analyzer and Security Assessment Framework
+# IPsec Sentinel
 
-> An AI-driven cybersecurity framework for analyzing IPsec VPN traffic, detecting protocol anomalies, identifying security misconfigurations, and providing explainable security assessments and remediation recommendations.
+### Encrypted IPsec Traffic Intelligence, Open-Set Detection & Security Analytics
 
----
+IPsec Sentinel is a passive, ML-enhanced security auditing and encrypted traffic intelligence framework for IPsec/IKE VPN networks.
 
-## 📌 Overview
+The system follows a strict separation between deterministic protocol analysis and probabilistic machine learning:
 
-**AI-Powered IPsec VPN Protocol Analyzer and Security Assessment Framework** is an intelligent network security analysis platform designed to inspect and assess the security of **IPsec VPN communications**.
+> **Facts are parsed. Estimates are inferred.**
 
-The system combines:
+IKE control-plane information is analyzed deterministically using protocol rules and security baselines, while encrypted ESP traffic is analyzed exclusively through observable metadata such as packet size, inter-arrival time, directionality, burst patterns, and temporal behavior.
 
-* 🔍 IPsec/IKE protocol analysis
-* 🧠 AI/ML-based anomaly detection
-* 🛡️ Rule-based security assessment
-* 📊 Risk scoring
-* 🚨 Threat and misconfiguration detection
-* 💡 Explainable security recommendations
-* 📈 Interactive security dashboard
+The upgraded architecture extends the original tabular ML pipeline into a research-oriented system supporting:
 
-Unlike traditional packet analyzers that primarily visualize network traffic, this framework attempts to answer:
-
-> **What is happening? Why is it suspicious? How severe is the issue? And what should be fixed?**
-
----
-
-## 🎯 Objectives
-
-The primary objectives of this project are:
-
-1. Analyze IPsec VPN traffic and protocol behavior.
-2. Inspect IKE Phase 1 and Phase 2 negotiations.
-3. Detect weak or insecure cryptographic configurations.
-4. Identify abnormal VPN traffic patterns.
-5. Detect protocol-level anomalies using Machine Learning.
-6. Generate an overall VPN security/risk score.
-7. Provide explainable security findings.
-8. Recommend appropriate remediation steps.
-9. Provide security analysts with a centralized dashboard.
+* Temporal packet-sequence modeling
+* Self-supervised representation learning
+* Open-set / OOD detection
+* Encrypted-flow anomaly detection
+* C2 / beacon / exfiltration behavior analysis
+* Traffic-morphing robustness evaluation
+* Protocol-aware adversarial training
+* Synthetic encrypted-flow augmentation
+* Cross-network generalization
+* Real-time streaming inference
+* ONNX / TensorRT optimized deployment
+* Evidence-aware classification and abstention
 
 ---
 
-## 🚀 Key Features
+## Core Philosophy
 
-### 🔍 1. IPsec Traffic Analysis
+```text
+                     IPsec Sentinel
+                           │
+              ┌────────────┴────────────┐
+              │                         │
+       Deterministic Analysis      ML Inference
+              │                         │
+          IKE Facts                ESP Estimates
+              │                         │
+      Protocol / Crypto          Flow Behavior
+          Validation             Classification
+              │                         │
+              └────────────┬────────────┘
+                           │
+                    Security Decision
+```
 
-Analyze VPN traffic and extract relevant protocol-level information such as:
+The system never attempts to decrypt or inspect ESP payload content.
 
-* IKE packets
-* ESP packets
-* AH packets
-* Security Associations
-* Encryption algorithms
-* Integrity algorithms
-* Authentication methods
-* Diffie-Hellman groups
-* Packet sizes
-* Packet frequency
-* Timing characteristics
-
----
-
-### 🧩 2. IKE Protocol Analysis
-
-The framework analyzes important IKE negotiation characteristics including:
-
-* IKE Phase 1
-* IKE Phase 2
-* Security Association negotiation
-* Proposal selection
-* Authentication exchange
-* Key exchange parameters
-* Negotiated cryptographic algorithms
-
-The analyzer can identify potentially insecure or unexpected negotiation behavior.
+Instead, it learns from the observable structure of encrypted communication.
 
 ---
 
-### 🛡️ 3. Security Misconfiguration Detection
+# Architecture
 
-A rule-based security engine checks for potentially insecure configurations such as:
+## End-to-End Architecture
 
-* Weak encryption algorithms
-* Weak integrity algorithms
-* Weak Diffie-Hellman groups
-* Deprecated cryptographic configurations
-* Weak authentication mechanisms
-* Missing security controls
-* Unexpected protocol parameters
-* Insecure policy combinations
+```mermaid
+flowchart TB
+
+    A["Network Interface / PCAP"] --> B["Packet Capture Layer"]
+
+    B --> C["IPsec Flow Builder"]
+
+    C --> D1["IKE Parser"]
+    C --> D2["ESP Metadata Extractor"]
+
+    D1 --> E["Deterministic Protocol & Crypto Analysis"]
+
+    D2 --> F["Streaming Flow Representation"]
+
+    F --> G1["Statistical Feature Engine"]
+    F --> G2["Packet Sequence Engine"]
+
+    G1 --> H1["XGBoost / Random Forest Baseline"]
+
+    G2 --> H2["Temporal CNN"]
+    G2 --> H3["TCN"]
+    G2 --> H4["BiLSTM"]
+    G2 --> H5["Temporal Transformer"]
+
+    H2 --> I["Flow Representation"]
+    H3 --> I
+    H4 --> I
+    H5 --> I
+
+    I --> J1["Traffic Classifier"]
+    I --> J2["OOD Detector"]
+    I --> J3["Anomaly Detector"]
+
+    J1 --> K["Decision & Abstention Layer"]
+    J2 --> K
+    J3 --> K
+
+    E --> K
+
+    K --> L1["Known Application"]
+    K --> L2["Unknown / OOD"]
+    K --> L3["Suspicious / Anomalous"]
+    K --> L4["Insufficient Evidence"]
+
+    K --> M["Explainability & Evidence"]
+```
 
 ---
 
-### 🤖 4. AI/ML-Based Anomaly Detection
+# ML Architecture
 
-Machine Learning models analyze extracted network features to identify abnormal VPN behavior.
+The upgraded ML system uses a multi-model architecture instead of relying exclusively on handcrafted tabular features.
 
-Potential approaches include:
+```mermaid
+flowchart LR
 
-* Isolation Forest
-* Random Forest
-* XGBoost
-* Autoencoders
-* LSTM/GRU for sequential behavior analysis
+    A["ESP Packet Stream"] --> B["Sliding Window"]
 
-The ML layer is intended to detect patterns that may not be captured by static security rules.
+    B --> C["packet_size"]
+    B --> D["inter_arrival_time"]
+    B --> E["direction"]
+
+    C --> F["Sequence Tensor"]
+    D --> F
+    E --> F
+
+    F --> G["Temporal Encoder"]
+
+    G --> G1["1D CNN"]
+    G --> G2["TCN"]
+    G --> G3["BiLSTM"]
+    G --> G4["Temporal Transformer"]
+
+    G1 --> H["Flow Embedding"]
+    G2 --> H
+    G3 --> H
+    G4 --> H
+
+    H --> I1["Classification Head"]
+    H --> I2["OOD Head"]
+    H --> I3["Anomaly Head"]
+
+    I1 --> J["Decision Layer"]
+    I2 --> J
+    I3 --> J
+```
 
 ---
 
-### 🚨 5. Threat Detection
+# 1. Deterministic IPsec Analysis
 
-The framework can flag suspicious behavior such as:
+The existing protocol analysis remains the source of authoritative facts.
 
-* Abnormal IKE negotiation patterns
-* Unexpected protocol behavior
-* Unusual packet frequency
-* Traffic anomalies
-* Potential downgrade indicators
-* Replay-related anomalies
-* Suspicious session behavior
+The deterministic layer handles:
 
-> Detection results are intended for defensive security analysis and require analyst validation.
+* IKE parsing
+* Security association inspection
+* Encryption algorithm identification
+* Integrity algorithm identification
+* Diffie-Hellman group analysis
+* Authentication configuration
+* Crypto-policy validation
+* NIST/CERT-In baseline checks
+* Security findings
+
+```text
+IKE / Control Plane
+        │
+        ▼
+Deterministic Parser
+        │
+        ├── Encryption
+        ├── Integrity
+        ├── Authentication
+        ├── DH Group
+        └── Configuration
+                  │
+                  ▼
+          Security Findings
+```
+
+Machine learning does not override deterministic protocol facts.
 
 ---
 
-### 📊 6. Risk Scoring
+# 2. ESP Flow Representation
 
-Each analyzed VPN session/configuration can receive a security score based on detected findings.
+ESP payloads remain encrypted.
+
+The ML layer therefore operates on metadata:
+
+```text
+Packet
+ ├── timestamp
+ ├── packet size
+ ├── direction
+ └── flow identifier
+```
+
+A flow is represented as:
+
+```text
+[
+    [packet_size, inter_arrival_time, direction],
+    [packet_size, inter_arrival_time, direction],
+    [packet_size, inter_arrival_time, direction],
+    ...
+]
+```
 
 Example:
 
 ```text
-VPN Security Score
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-72 / 100
-
-Risk Level: HIGH
-
-Critical Issues    : 0
-High Issues        : 1
-Medium Issues      : 2
-Low Issues         : 1
+[
+    [512,  0.012,  1],
+    [480,  0.018,  1],
+    [1180, 0.021, -1],
+    [1200, 0.019, -1]
+]
 ```
 
-Risk levels:
+The sequence can be converted into fixed windows:
 
-|  Score | Risk        |
-| -----: | ----------- |
-| 90–100 | 🟢 Low      |
-|  70–89 | 🟡 Moderate |
-|  40–69 | 🟠 High     |
-|   0–39 | 🔴 Critical |
+```text
+N = 64 / 128 / 256 packets
+```
+
+with padding and attention masks for short flows.
 
 ---
 
-### 🧠 7. Explainable AI
+# 3. Feature Engineering
 
-The framework aims to make ML-based findings understandable to security analysts.
+The existing statistical representation is retained as the baseline.
 
-Instead of simply reporting:
+### Packet Statistics
+
+* Minimum packet size
+* Maximum packet size
+* Mean
+* Median
+* Standard deviation
+* Percentiles
+* Packet-size entropy
+
+### Temporal Statistics
+
+* Mean inter-arrival time
+* Median IAT
+* IAT variance
+* Burst duration
+* Burst frequency
+* Idle periods
+* Temporal entropy
+
+### Directional Statistics
+
+* Upload/download ratio
+* Direction transition rate
+* Direction entropy
+* Request/response asymmetry
+
+### Temporal-Spectral Features
+
+The upgraded system can additionally calculate:
+
+* Autocorrelation
+* Dominant frequency
+* Spectral entropy
+* FFT-based periodicity
+* Burst periodicity
+
+These features are particularly useful for identifying repetitive behaviors such as beaconing.
+
+---
+
+# 4. Temporal Deep Learning
+
+The original:
 
 ```text
-Anomaly Detected
+Flow statistics → XGBoost
 ```
 
-the system can provide:
+pipeline is extended with sequence models.
+
+## 1D CNN
+
+CNN layers learn local temporal patterns:
 
 ```text
-Anomaly Detected
+Packet Sequence
+      │
+      ▼
+Conv1D
+      │
+      ▼
+Conv1D
+      │
+      ▼
+Pooling
+      │
+      ▼
+Flow Embedding
+```
 
-Reason:
-• Unusual IKE negotiation sequence
-• Packet timing differs significantly from baseline
-• Unexpected proposal behavior
+Useful for:
+
+* Burst patterns
+* Local packet-size transitions
+* Short request/response patterns
+
+---
+
+## Temporal Convolutional Network
+
+TCN uses dilated convolutions to capture longer temporal dependencies.
+
+```mermaid
+flowchart LR
+
+    A["Input Sequence"] --> B["Dilation 1"]
+    B --> C["Dilation 2"]
+    C --> D["Dilation 4"]
+    D --> E["Dilation 8"]
+    E --> F["Dilation 16"]
+    F --> G["Flow Embedding"]
+```
+
+TCN is particularly useful for:
+
+* Periodic traffic
+* Long-range burst behavior
+* Beacon-like patterns
+* Low-latency inference
+
+---
+
+## BiLSTM
+
+BiLSTM captures sequential dependencies across the flow.
+
+```text
+Packet Sequence
+      │
+      ▼
+Embedding
+      │
+      ▼
+BiLSTM
+      │
+      ▼
+Attention / Pooling
+      │
+      ▼
+Flow Representation
+```
+
+---
+
+## Temporal Transformer
+
+A lightweight Transformer can learn long-range dependencies using attention.
+
+```text
+Packet Sequence
+      │
+      ▼
+Feature Projection
+      │
+      ▼
+Positional Encoding
+      │
+      ▼
+Transformer Encoder
+      │
+      ▼
+Attention Pooling
+      │
+      ▼
+Flow Embedding
+```
+
+The implementation intentionally uses small models because the initial labeled dataset is limited.
+
+---
+
+# 5. Self-Supervised Learning
+
+A major objective is to reduce dependence on labeled IPsec captures.
+
+```mermaid
+flowchart TB
+
+    A["Unlabeled Encrypted Flows"] --> B["Flow Augmentation"]
+
+    B --> C1["Original View"]
+    B --> C2["Augmented View"]
+
+    C1 --> D1["Shared Flow Encoder"]
+    C2 --> D2["Shared Flow Encoder"]
+
+    D1 --> E1["Embedding z1"]
+    D2 --> E2["Embedding z2"]
+
+    E1 --> F["Contrastive Objective"]
+    E2 --> F
+
+    F --> G["Pretrained Flow Encoder"]
+
+    G --> H["Fine-tuning"]
+    H --> I["Small Labeled Dataset"]
+    I --> J["Traffic Classifier"]
+```
+
+Possible protocol-aware augmentations:
+
+* Small timing jitter
+* Packet masking
+* Sequence cropping
+* Subsequence sampling
+* MTU-aware size perturbation
+* Direction-preserving transformations
+
+Invalid transformations are rejected.
+
+For example:
+
+```text
+packet_size <= MTU
+IAT >= 0
+direction ∈ {-1, +1}
+```
+
+The objective is to learn a reusable representation of encrypted traffic before supervised fine-tuning.
+
+---
+
+# 6. Open-Set Recognition
+
+Traditional classifiers assume every test sample belongs to a known class.
+
+IPsec Sentinel instead supports:
+
+```text
+Known
+Unknown
+Suspicious
+Insufficient Evidence
+```
+
+Architecture:
+
+```mermaid
+flowchart LR
+
+    A["ESP Flow"] --> B["Temporal Encoder"]
+
+    B --> C["Embedding"]
+
+    C --> D1["Known-Class Classifier"]
+    C --> D2["OOD Detector"]
+    C --> D3["Anomaly Detector"]
+
+    D1 --> E["Decision Engine"]
+    D2 --> E
+    D3 --> E
+
+    E --> F1["Known Application"]
+    E --> F2["Unknown Traffic"]
+    E --> F3["Suspicious Traffic"]
+    E --> F4["Abstain"]
+```
+
+Candidate OOD methods:
+
+* Mahalanobis distance
+* Energy-based scoring
+* Deep SVDD
+* Evidential Deep Learning
+* Embedding-space density estimation
+
+---
+
+# 7. Anomaly Detection
+
+The security ML layer operates independently from application classification.
+
+```text
+Application Classification
+        ≠
+Security Anomaly Detection
+```
+
+This allows the system to detect suspicious behavior even when the application itself is unknown.
+
+Potential targets include:
+
+* Periodic C2-like communication
+* Covert channels
+* Data exfiltration patterns
+* Abnormal upload-heavy flows
+* Unusual burst behavior
+* Unexpected periodic traffic
+
+---
+
+## Anomaly Detection Architecture
+
+```mermaid
+flowchart TB
+
+    A["Encrypted Flow"] --> B["Flow Encoder"]
+
+    B --> C["Embedding"]
+
+    C --> D1["Deep SVDD"]
+    C --> D2["Mahalanobis Distance"]
+
+    E["Statistical Features"] --> D3["Isolation Forest"]
+
+    D1 --> F["Anomaly Ensemble"]
+    D2 --> F
+    D3 --> F
+
+    F --> G["Anomaly Score"]
+
+    G --> H["Normal / Suspicious"]
+```
+
+---
+
+# 8. Traffic Morphing & Adversarial Robustness
+
+Encrypted traffic classifiers can be affected by:
+
+* Packet padding
+* Timing jitter
+* Dummy packet injection
+* Burst splitting
+* Timing manipulation
+
+IPsec Sentinel includes a traffic-morphing evaluation layer.
+
+```mermaid
+flowchart LR
+
+    A["Original Flow"] --> B["Traffic Morphing Engine"]
+
+    B --> C1["Timing Jitter"]
+    B --> C2["Packet Padding"]
+    B --> C3["Dummy Packets"]
+    B --> C4["Burst Modification"]
+
+    C1 --> D["Adversarial Flow"]
+    C2 --> D
+    C3 --> D
+    C4 --> D
+
+    D --> E["ML Classifier"]
+
+    E --> F["Robustness Evaluation"]
+```
+
+Adversarial perturbations are constrained by networking requirements:
+
+```text
+packet_size <= MTU
+IAT >= 0
+valid direction
+realistic timing
+valid packet sequence
+```
+
+The system measures:
+
+```text
+Clean Performance
+        ↓
+Morphed Performance
+        ↓
+Performance Degradation
+```
+
+---
+
+# 9. Synthetic Data Generation
+
+Real-world encrypted IPsec captures are difficult to collect because of privacy and operational constraints.
+
+The project therefore supports protocol-aware data augmentation and experimental synthetic generation.
+
+Candidate approaches:
+
+* TimeGAN
+* Time-series diffusion
+* TabDDPM
+* Flow-level generative models
+
+```mermaid
+flowchart TB
+
+    A["Real IPsec Flows"] --> B["Distribution Analysis"]
+
+    B --> C["Synthetic Flow Generator"]
+
+    C --> D["Generated Flows"]
+
+    D --> E["Physics / Protocol Validation"]
+
+    E --> F["Synthetic Dataset"]
+
+    F --> G["Training Augmentation"]
+
+    G --> H["Evaluation on REAL Held-Out Flows"]
+```
+
+Synthetic data is considered useful only if it improves performance on real unseen data.
+
+Validation includes:
+
+* Packet-size distributions
+* IAT distributions
+* Burst statistics
+* Directionality
+* Autocorrelation
+* Spectral properties
+* ML utility
+
+---
+
+# 10. Domain Generalization
+
+Random train/test splitting can overestimate model performance when samples originate from the same test environment.
+
+IPsec Sentinel therefore supports environment-based evaluation.
+
+```text
+Training:
+
+Network A
+Network B
+Network C
+
+        ↓
+
+       Model
+
+        ↓
+
+Testing:
+
+Network D
+```
+
+The test environment remains completely unseen during training.
+
+The testbed can vary:
+
+| Parameter    | Example Values                   |
+| ------------ | -------------------------------- |
+| MTU          | 576 / 1200 / 1400 / 1500         |
+| Latency      | 5 / 20 / 50 / 100 ms             |
+| Jitter       | 0 / 5 / 20 ms                    |
+| Packet Loss  | 0 / 0.1 / 1 / 5%                 |
+| Reordering   | 0 / 1 / 5%                       |
+| Bandwidth    | 10 / 50 / 100 / 500 Mbps         |
+| Applications | VoIP / HTTP / DNS / Video / Bulk |
+
+This provides a stronger measure of real-world generalization.
+
+---
+
+# 11. Streaming Inference
+
+The ML engine is designed for incremental inference instead of waiting for an entire flow.
+
+```mermaid
+flowchart LR
+
+    A["ESP Packet"] --> B["Flow State"]
+
+    B --> C["Rolling Sequence Buffer"]
+
+    C --> D["Window 1"]
+    C --> E["Window 2"]
+    C --> F["Window N"]
+
+    D --> G["ML Inference"]
+    E --> G
+    F --> G
+
+    G --> H["Prediction Timeline"]
+```
+
+Example:
+
+```text
+Packet 1–32     → Prediction 1
+Packet 33–64    → Prediction 2
+Packet 65–96    → Prediction 3
+...
+```
+
+The flow state maintains:
+
+```text
+packet_count
+last_timestamp
+rolling_statistics
+sequence_buffer
+current_embedding
+prediction_history
+OOD_score
+anomaly_score
+```
+
+---
+
+# 12. Production ML Optimization
+
+The inference stack can be optimized through:
+
+```mermaid
+flowchart LR
+
+    A["PyTorch Model"] --> B["ONNX Export"]
+
+    B --> C["ONNX Runtime"]
+
+    C --> D1["FP32"]
+    C --> D2["FP16"]
+    C --> D3["INT8"]
+
+    D1 --> E["Benchmark"]
+    D2 --> E
+    D3 --> E
+
+    E --> F["Production Streaming Inference"]
+```
+
+Benchmarks should report:
+
+* p50 latency
+* p95 latency
+* p99 latency
+* Throughput
+* CPU utilization
+* GPU utilization
+* GPU memory
+* Model size
+
+The project does not equate model inference throughput with complete 10-Gbps packet-processing capability; end-to-end performance must include capture, flow aggregation, feature extraction, and inference.
+
+---
+
+# 13. Explainability
+
+The system retains explainability for both classical and deep models.
+
+### Classical ML
+
+SHAP provides feature-level explanations:
+
+```text
+High contribution:
+    constant IAT
+    packet-size distribution
+    directionality
+```
+
+### Deep ML
+
+The system can additionally expose:
+
+* Temporal saliency
+* Attention weights
+* Important packet windows
+* Feature attribution
+* OOD distance
+* Anomaly score
+
+Example:
+
+```text
+Prediction:
+    VoIP
+
+Evidence:
+    Stable IAT
+    Small packet-size variance
+    Periodic bidirectional bursts
 
 Confidence:
-87%
+    0.91
 
-Recommended Action:
-Review the affected VPN session and verify
-the configured IKE/IPsec security policy.
-```
+OOD Score:
+    Low
 
-For supported ML models, explainability can be implemented using **SHAP** or feature-importance analysis.
-
----
-
-### 💡 8. Security Recommendations
-
-For every detected security issue, the system can generate actionable remediation guidance.
-
-Example:
-
-```text
-Finding:
-Weak cryptographic configuration
-
-Severity:
-HIGH
-
-Recommendation:
-Use modern authenticated encryption and
-strong key-exchange parameters according
-to the organization's security policy.
+Decision:
+    Known Application
 ```
 
 ---
 
-### 📈 9. Security Dashboard
+# 14. Decision Engine
 
-The web dashboard provides a centralized view of:
-
-* VPN security score
-* Active findings
-* Risk distribution
-* Detected anomalies
-* Protocol statistics
-* Cryptographic configuration
-* Session information
-* AI predictions
-* Recommended remediation
-
----
-
-# 🏗️ System Architecture
+The final output is not simply:
 
 ```text
-                     ┌───────────────────────┐
-                     │   IPsec VPN Traffic   │
-                     │    / PCAP Files       │
-                     └───────────┬───────────┘
-                                 │
-                                 ▼
-                     ┌───────────────────────┐
-                     │   Packet Capture      │
-                     │   & Protocol Parser   │
-                     └───────────┬───────────┘
-                                 │
-                                 ▼
-                     ┌───────────────────────┐
-                     │   IPsec / IKE         │
-                     │   Feature Extraction  │
-                     └───────────┬───────────┘
-                                 │
-                    ┌────────────┴────────────┐
-                    ▼                         ▼
-          ┌──────────────────┐      ┌──────────────────┐
-          │ Rule-Based       │      │ AI/ML Anomaly    │
-          │ Security Engine  │      │ Detection Engine  │
-          └────────┬─────────┘      └────────┬─────────┘
-                   │                         │
-                   └────────────┬────────────┘
-                                ▼
-                    ┌───────────────────────┐
-                    │   Risk Assessment     │
-                    │   & Threat Scoring    │
-                    └───────────┬───────────┘
-                                │
-                                ▼
-                    ┌───────────────────────┐
-                    │ Explainable Findings  │
-                    │ & Recommendations     │
-                    └───────────┬───────────┘
-                                │
-                                ▼
-                    ┌───────────────────────┐
-                    │ Security Dashboard    │
-                    └───────────────────────┘
+class = VoIP
+```
+
+Instead:
+
+```json
+{
+  "classification": "VoIP",
+  "confidence": 0.91,
+  "ood_score": 0.08,
+  "anomaly_score": 0.12,
+  "decision": "known",
+  "abstained": false
+}
+```
+
+Possible decisions:
+
+```text
+KNOWN
+UNKNOWN
+SUSPICIOUS
+ABSTAIN
+```
+
+The decision layer combines:
+
+```text
+classification confidence
++
+OOD score
++
+anomaly score
++
+minimum observation threshold
 ```
 
 ---
 
-# 🧰 Technology Stack
-
-## Backend
-
-* Python
-* FastAPI
-* Pydantic
-* SQLAlchemy
-
-## Network Security
-
-* Scapy
-* PyShark
-* Wireshark / tshark
-* IPsec
-* IKE
-* ESP
-* AH
-
-## Machine Learning
-
-* Python
-* Scikit-learn
-* XGBoost
-* PyTorch
-* Pandas
-* NumPy
-
-## Explainable AI
-
-* SHAP
-* Feature Importance
-* Model confidence analysis
-
-## Database
-
-* PostgreSQL
-
-## Frontend
-
-* React
-* TypeScript
-* Tailwind CSS
-* Recharts
-
-## DevOps / MLOps
-
-* Docker
-* Docker Compose
-* MLflow
-* Prometheus
-* Grafana
-
----
-
-# 📂 Project Structure
+# Project Structure
 
 ```text
-ipsec-vpn-analyzer/
+ipsec-sentinel/
 │
-├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   ├── core/
-│   │   ├── models/
-│   │   ├── schemas/
-│   │   ├── services/
-│   │   └── main.py
-│   │
-│   ├── requirements.txt
-│   └── Dockerfile
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── services/
-│   │   └── App.tsx
-│   │
-│   ├── package.json
-│   └── Dockerfile
-│
-├── ml/
-│   ├── data/
-│   ├── models/
-│   ├── preprocessing/
-│   ├── training/
-│   ├── inference/
-│   └── evaluation/
-│
-├── analyzer/
-│   ├── packet_parser/
-│   ├── ike_analyzer/
-│   ├── ipsec_analyzer/
-│   └── feature_extractor/
-│
-├── rules/
-│   ├── crypto_rules/
-│   ├── configuration_rules/
-│   └── protocol_rules/
-│
-├── datasets/
+├── src/
+│   └── ipsec_sentinel/
+│       │
+│       ├── capture/
+│       │   └── ...
+│       │
+│       ├── parser/
+│       │   ├── ike.py
+│       │   └── esp.py
+│       │
+│       ├── features/
+│       │   ├── flow.py
+│       │   ├── statistics.py
+│       │   ├── temporal.py
+│       │   └── spectral.py
+│       │
+│       ├── ml/
+│       │   │
+│       │   ├── baseline/
+│       │   │   ├── xgboost.py
+│       │   │   └── random_forest.py
+│       │   │
+│       │   ├── sequence/
+│       │   │   ├── cnn.py
+│       │   │   ├── tcn.py
+│       │   │   ├── lstm.py
+│       │   │   ├── transformer.py
+│       │   │   └── encoder.py
+│       │   │
+│       │   ├── ssl/
+│       │   │   ├── augmentations.py
+│       │   │   ├── contrastive.py
+│       │   │   ├── pretrain.py
+│       │   │   └── embeddings.py
+│       │   │
+│       │   ├── anomaly/
+│       │   │   ├── isolation_forest.py
+│       │   │   ├── deep_svdd.py
+│       │   │   ├── mahalanobis.py
+│       │   │   └── ensemble.py
+│       │   │
+│       │   ├── ood/
+│       │   │   ├── energy.py
+│       │   │   ├── mahalanobis.py
+│       │   │   └── calibration.py
+│       │   │
+│       │   ├── robustness/
+│       │   │   ├── morphing.py
+│       │   │   ├── adversarial.py
+│       │   │   └── evaluation.py
+│       │   │
+│       │   ├── deployment/
+│       │   │   ├── streaming.py
+│       │   │   ├── export_onnx.py
+│       │   │   └── benchmark.py
+│       │   │
+│       │   ├── train.py
+│       │   ├── classify.py
+│       │   └── explain.py
+│       │
+│       └── reporting/
 │
 ├── tests/
-│   ├── backend/
-│   ├── analyzer/
-│   ├── ml/
-│   └── security/
+│   ├── parser/
+│   ├── features/
+│   └── ml/
 │
-├── docker-compose.yml
-├── README.md
-└── LICENSE
+├── experiments/
+│   ├── sequence_models/
+│   ├── ssl/
+│   ├── ood/
+│   ├── anomaly/
+│   ├── robustness/
+│   └── deployment/
+│
+├── testbed/
+│   ├── docker/
+│   ├── strongswan/
+│   └── netem/
+│
+├── configs/
+│
+├── benchmarks/
+│
+├── docs/
+│   ├── DATASET.md
+│   ├── GENERALISATION.md
+│   ├── ML_ARCHITECTURE.md
+│   ├── OOD.md
+│   ├── ROBUSTNESS.md
+│   └── DEPLOYMENT.md
+│
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
-# ⚙️ How It Works
+# ML Research Roadmap
 
-### Step 1 — Input
+```mermaid
+flowchart LR
 
-The analyzer accepts authorized VPN/network data such as:
+    A["Existing XGBoost"] --> B["Temporal CNN"]
+    B --> C["TCN / BiLSTM"]
+    C --> D["Temporal Transformer"]
 
-```text
-PCAP / PCAPNG
-        +
-IPsec/IKE configuration
-        +
-VPN session metadata
+    D --> E["Self-Supervised Pretraining"]
+
+    E --> F["Open-Set Recognition"]
+
+    F --> G["Anomaly Detection"]
+
+    G --> H["Traffic Morphing"]
+
+    H --> I["Adversarial Training"]
+
+    I --> J["Cross-Network Evaluation"]
+
+    J --> K["ONNX / TensorRT"]
+
+    K --> L["Streaming Production Inference"]
 ```
 
 ---
 
-### Step 2 — Packet Parsing
+# 4-Week Implementation Plan
 
-Network packets are parsed to identify relevant:
+## Week 1 — Temporal ML
 
-```text
-IKE
-ESP
-AH
-UDP
-IP
-```
+* Establish reproducible XGBoost baseline
+* Implement sequence extraction
+* Add packet-size/IAT/direction tensors
+* Implement 1D CNN
+* Implement TCN
+* Compare against baseline
+* Add temporal evaluation metrics
 
-traffic and associated metadata.
+## Week 2 — Self-Supervised + OOD
 
----
+* Implement flow augmentations
+* Build contrastive learning pipeline
+* Pretrain Flow Encoder
+* Fine-tune on labeled captures
+* Implement Mahalanobis OOD
+* Implement Isolation Forest
+* Add explicit abstention
 
-### Step 3 — Feature Extraction
+## Week 3 — Security ML
 
-The system extracts features including:
+* Implement anomaly detection
+* Add periodicity and spectral features
+* Build anomaly ensemble
+* Implement traffic morphing
+* Evaluate padding/jitter/dummy-packet attacks
+* Implement constrained adversarial training
 
-```text
-Packet count
-Packet size
-Packet frequency
-Protocol type
-IKE message type
-Negotiated algorithms
-Authentication method
-DH group
-Session duration
-Timing characteristics
-```
+## Week 4 — Generalization + Deployment
 
----
-
-### Step 4 — Rule-Based Analysis
-
-Security policies are evaluated against extracted information.
-
-Example:
-
-```text
-IF
-encryption_algorithm == weak_algorithm
-
-THEN
-severity = HIGH
-finding = "Weak Encryption Configuration"
-```
+* Expand strongSwan/netem test matrix
+* Create environment-based train/test splits
+* Evaluate cross-network generalization
+* Export model to ONNX
+* Benchmark FP32/FP16/INT8
+* Implement sliding-window inference
+* Produce final latency/throughput benchmarks
+* Document research findings
 
 ---
 
-### Step 5 — AI/ML Analysis
+# Evaluation Framework
 
-The extracted features are passed to trained ML models.
+The project evaluates more than classification accuracy.
 
-Example:
+## Classification
 
 ```text
-Network Features
-       ↓
-Preprocessing
-       ↓
-ML Model
-       ↓
-Normal / Anomalous
-       ↓
-Confidence Score
+Macro-F1
+Balanced Accuracy
+Per-Class F1
+Confusion Matrix
+Expected Calibration Error
+Brier Score
 ```
 
----
-
-### Step 6 — Risk Assessment
-
-Rule-based findings and ML predictions are combined to generate an overall security assessment.
+## Open-Set Detection
 
 ```text
-Rule Findings
-      +
-ML Anomalies
-      +
-Configuration Analysis
-      ↓
-Risk Engine
-      ↓
-Security Score
+AUROC
+AUPR
+FPR@95TPR
+Detection Error
 ```
 
----
-
-### Step 7 — Recommendation
-
-The framework maps findings to remediation recommendations.
+## Anomaly Detection
 
 ```text
-Finding
-   ↓
-Severity
-   ↓
-Security Policy
-   ↓
-Recommended Action
-```
-
----
-
-# 📊 Example Assessment
-
-```text
-==================================================
-             IPsec VPN Security Report
-==================================================
-
-Security Score: 68 / 100
-Risk Level: HIGH
-
---------------------------------------------------
-Protocol Analysis
---------------------------------------------------
-
-IKE                ✓ Detected
-ESP                ✓ Detected
-AH                 - Not Observed
-
---------------------------------------------------
-Security Analysis
---------------------------------------------------
-
-Encryption         ⚠ Review Required
-Integrity          ✓ Acceptable
-Authentication     ✓ Acceptable
-Key Exchange       ⚠ Review Required
-Replay Protection  ✓ Enabled
-
---------------------------------------------------
-AI Analysis
---------------------------------------------------
-
-Anomaly Status: DETECTED
-Confidence: 87%
-
-Observed Indicators:
-• Abnormal packet timing
-• Unusual negotiation sequence
-
---------------------------------------------------
-Recommendations
---------------------------------------------------
-
-1. Review the configured cryptographic policy.
-2. Investigate the anomalous VPN session.
-3. Verify IKE/IPsec negotiation parameters.
-==================================================
-```
-
----
-
-# 🧪 Dataset & Evaluation
-
-The ML component can be evaluated using a combination of:
-
-### Normal Traffic
-
-* Legitimate IPsec VPN sessions
-* Normal IKE negotiations
-* Expected ESP traffic
-* Baseline network behavior
-
-### Anomalous Traffic
-
-* Abnormal packet sequences
-* Unusual negotiation behavior
-* Unexpected protocol patterns
-* Synthetic security anomalies
-
-### Evaluation Metrics
-
-```text
-Accuracy
-Precision
-Recall
-F1-Score
 ROC-AUC
+PR-AUC
+Precision@K
+Recall@K
 False Positive Rate
-Detection Rate
-Inference Latency
 ```
 
-For anomaly detection, special attention should be given to **false positives**, since legitimate VPN traffic can vary considerably.
-
----
-
-# 🔒 Security & Ethical Use
-
-This project is designed for **defensive cybersecurity research, authorized network analysis, and security assessment**.
-
-Use the analyzer only on:
-
-* Networks you own
-* VPN infrastructure you administer
-* Authorized lab environments
-* PCAP datasets obtained legally
-* Systems where you have explicit permission to perform analysis
-
-The project should not be used to intercept, monitor, or manipulate third-party VPN traffic without authorization.
-
----
-
-# 🧪 Recommended Testing Environment
-
-For safe experimentation, create an isolated lab:
+## Robustness
 
 ```text
-┌───────────────┐
-│ Linux Client  │
-└───────┬───────┘
-        │
-        │ IPsec VPN
-        │
-┌───────▼───────┐
-│ VPN Gateway   │
-└───────┬───────┘
-        │
-        ▼
-┌───────────────┐
-│ Test Network  │
-└───────────────┘
-        │
-        ▼
-┌────────────────────┐
-│ Packet Capture     │
-│ + AI Analyzer      │
-└────────────────────┘
+Clean Macro-F1
+Morphed Macro-F1
+Performance Degradation
+Attack Success Rate
+```
+
+## Deployment
+
+```text
+p50 latency
+p95 latency
+p99 latency
+flows/sec
+CPU utilization
+GPU utilization
+GPU memory
+Model size
 ```
 
 ---
 
-# 📌 Roadmap
+# Experimental Baselines
 
-## Phase 1 — Foundation
+Every new ML component should be compared against the original baseline.
 
-* [x] Project architecture
-* [ ] IPsec packet ingestion
-* [ ] PCAP parser
-* [ ] Basic protocol identification
-* [ ] Feature extraction
+```text
+                ┌─────────────────┐
+                │ XGBoost Baseline│
+                └────────┬────────┘
+                         │
+        ┌────────────────┼────────────────┐
+        ▼                ▼                ▼
+      CNN               TCN          Transformer
+        │                │                │
+        └────────────────┼────────────────┘
+                         ▼
+                SSL Pretrained Encoder
+                         │
+             ┌───────────┼───────────┐
+             ▼           ▼           ▼
+           Class        OOD       Anomaly
+```
 
-## Phase 2 — Security Engine
-
-* [ ] IKE analysis
-* [ ] Cryptographic configuration analysis
-* [ ] Security rules
-* [ ] Severity classification
-* [ ] Risk scoring
-
-## Phase 3 — AI/ML
-
-* [ ] Dataset preparation
-* [ ] Feature engineering
-* [ ] Baseline ML model
-* [ ] Anomaly detection
-* [ ] Model evaluation
-* [ ] Explainability
-
-## Phase 4 — Dashboard
-
-* [ ] Security dashboard
-* [ ] Session visualization
-* [ ] Risk charts
-* [ ] Finding details
-* [ ] Recommendation engine
-
-## Phase 5 — Production
-
-* [ ] REST APIs
-* [ ] Authentication
-* [ ] Docker deployment
-* [ ] MLflow integration
-* [ ] Monitoring
-* [ ] Automated testing
-* [ ] Security hardening
+Experiments should use environment-aware splits wherever possible.
 
 ---
 
-# 🌟 Future Enhancements
+# Research Questions
 
-Potential future improvements include:
+The upgraded project investigates:
 
-* Real-time VPN traffic monitoring
-* Multi-VPN gateway support
-* Automated configuration auditing
-* Threat intelligence integration
-* SIEM integration
-* STIX/TAXII integration
-* Advanced sequence modeling
-* Federated learning for privacy-preserving detection
-* Automated compliance reporting
-* PDF security reports
-* SOC analyst workflow integration
+### RQ1
 
----
+Can temporal packet-sequence models outperform handcrafted flow statistics for encrypted IPsec traffic classification?
 
-# 📈 Expected Impact
+### RQ2
 
-The framework can help security teams:
+Can self-supervised learning reduce the amount of labeled encrypted traffic required for useful representations?
 
-* Reduce manual VPN security analysis
-* Detect potentially insecure configurations faster
-* Identify abnormal VPN behavior
-* Prioritize security findings
-* Understand ML-based alerts through explainability
-* Improve VPN security posture
-* Automate repetitive security assessment tasks
+### RQ3
 
----
+Can open-set recognition identify previously unseen encrypted traffic instead of forcing every flow into a known class?
 
-# 👨‍💻 Development
+### RQ4
 
-Clone the repository:
+Can flow-level behavioral features identify suspicious encrypted communication without inspecting payloads?
 
-```bash
-git clone https://github.com/<your-username>/ipsec-vpn-analyzer.git
+### RQ5
 
-cd ipsec-vpn-analyzer
-```
+How robust are encrypted-traffic models against packet padding, timing jitter, and dummy-packet injection?
 
-Create a Python environment:
+### RQ6
 
-```bash
-python -m venv .venv
-```
+Can protocol-aware synthetic augmentation improve generalization to unseen network environments?
 
-Activate it on Windows:
+### RQ7
 
-```bash
-.venv\Scripts\activate
-```
-
-Activate it on Linux/macOS:
-
-```bash
-source .venv/bin/activate
-```
-
-Install dependencies:
-
-```bash
-pip install -r backend/requirements.txt
-```
-
-Run the backend:
-
-```bash
-uvicorn backend.app.main:app --reload
-```
-
-Start the frontend:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
+Can the resulting models meet practical streaming inference requirements after ONNX/TensorRT optimization?
 
 ---
 
-# 🤝 Contributing
+# Security Boundary
 
-Contributions are welcome.
+IPsec Sentinel is a passive traffic-analysis and security-auditing system.
 
-1. Fork the repository.
-2. Create a feature branch.
+The ML subsystem:
 
-```bash
-git checkout -b feature/new-feature
-```
+* Does not decrypt ESP payloads
+* Does not inspect application payload content
+* Does not reconstruct encrypted application data
+* Does not claim semantic knowledge unavailable from metadata
+* Reports probabilistic estimates separately from deterministic protocol facts
+* Abstains when insufficient evidence is available
 
-3. Commit your changes.
-
-```bash
-git commit -m "Add new feature"
-```
-
-4. Push the branch.
-
-```bash
-git push origin feature/new-feature
-```
-
-5. Open a Pull Request.
+The system is designed for defensive security research, network monitoring, auditing, and controlled experimentation.
 
 ---
 
-# 📜 License
+# Current vs Target Architecture
 
-This project is intended for educational, research, and authorized defensive-security purposes.
-
-Add an appropriate open-source license to the repository before public release.
+| Capability                  | Existing |       Target |
+| --------------------------- | -------: | -----------: |
+| IKE deterministic parsing   |      Yes |          Yes |
+| Crypto rule analysis        |      Yes |          Yes |
+| Handcrafted flow features   |      Yes |          Yes |
+| XGBoost/RF                  |      Yes |          Yes |
+| SHAP                        |      Yes |          Yes |
+| Temporal CNN                |       No |          Yes |
+| TCN                         |       No |          Yes |
+| BiLSTM                      |       No |     Optional |
+| Transformer                 |       No |          Yes |
+| Self-supervised learning    |       No |          Yes |
+| Open-set recognition        |       No |          Yes |
+| OOD detection               |  Limited |          Yes |
+| Anomaly detection           |       No |          Yes |
+| C2/beacon behavior analysis |       No | Experimental |
+| Traffic morphing evaluation |       No |          Yes |
+| Adversarial training        |       No |          Yes |
+| Synthetic flow generation   |       No | Experimental |
+| Cross-network evaluation    |  Limited |          Yes |
+| ONNX deployment             |       No |          Yes |
+| TensorRT optimization       |       No | Experimental |
+| Streaming inference         |  Limited |          Yes |
 
 ---
 
-# ⭐ Project Vision
+# Project Vision
 
-> **Build an intelligent security layer that transforms raw IPsec VPN traffic into actionable security intelligence.**
+IPsec Sentinel aims to evolve from a traditional encrypted-traffic classifier into a broader **Encrypted Traffic Intelligence and Security Analytics Platform**.
 
-**Analyze → Detect → Explain → Assess → Recommend**
+```mermaid
+flowchart TB
+
+    A["Encrypted IPsec Traffic"] --> B["Observable Metadata"]
+
+    B --> C["Representation Learning"]
+
+    C --> D["Behavior Understanding"]
+
+    D --> E1["Application Classification"]
+    D --> E2["Open-Set Detection"]
+    D --> E3["Security Anomaly Detection"]
+
+    E1 --> F["Evidence-Aware Decision"]
+    E2 --> F
+    E3 --> F
+
+    F --> G["Passive Security Intelligence"]
+
+    G --> H["Explainable / Auditable Findings"]
+```
+
+The long-term objective is not simply to achieve a higher classification score.
+
+It is to build an ML system that can answer:
+
+> **What can we reliably infer from encrypted IPsec traffic, how uncertain are we, and when does observed behavior deviate from what the model has learned?**
 
 ---
 
-## 🔐 Keywords
+# Disclaimer
 
-`IPsec` `VPN` `IKE` `Cyber Security` `Network Security` `AI` `Machine Learning` `Anomaly Detection` `Threat Detection` `Security Assessment` `Protocol Analysis` `Python` `FastAPI` `React` `Scapy` `Wireshark` `XGBoost` `PyTorch` `MLOps`
+This project is intended for authorized security research, defensive network monitoring, protocol analysis, and controlled laboratory experimentation.
+
+All active testing, traffic generation, adversarial evaluation, and network experiments should be performed only on systems and networks for which the operator has explicit authorization.
