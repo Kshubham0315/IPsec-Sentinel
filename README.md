@@ -2,6 +2,7 @@
 
 ### Encrypted IPsec Traffic Intelligence, Open-Set Detection & Security Analytics
 
+
 IPsec Sentinel is a passive, ML-enhanced security auditing and encrypted traffic intelligence framework for IPsec/IKE VPN networks.
 
 The system follows a strict separation between deterministic protocol analysis and probabilistic machine learning:
