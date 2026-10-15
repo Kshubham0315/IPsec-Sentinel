@@ -1,0 +1,40 @@
+FROM debian:bookworm-slim
+
+# strongswan-swanctl gives the swanctl/VICI control interface, which is how ground
+# truth is harvested in Step 1.6.
+#
+# libstrongswan-standard-plugins carries the openssl backend. It is NOT optional: it
+# is what provides ECDH, so without it DH groups 19/20/21 in the Step 1.5 matrix
+# cannot be negotiated at all. libstrongswan-extra-plugins adds Curve25519 (group 31).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    strongswan strongswan-swanctl \
+    libstrongswan-standard-plugins libstrongswan-extra-plugins \
+    libcharon-extra-plugins \
+    iproute2 iputils-ping tcpdump iperf3 curl \
+    python3-minimal tcpreplay \
+    && rm -rf /var/lib/apt/lists/*
+
+# Transport mode protects the peers themselves, so its traffic must originate on the
+# gateway rather than on a host behind it. That makes the gateway a traffic source as
+# well as an IPsec endpoint, and it needs the same tools the traffic image carries:
+# python3 for the RTP endpoint, tcpreplay for corpus replay. Without them a transport
+# cell establishes its SA and then fails at generation, which is how the first attempt
+# produced "generator setup failed" on two of every three cells.
+COPY scripts/ /opt/sentinel/
+RUN chmod +x /opt/sentinel/*.py 2>/dev/null || true
+
+# strongSwan refuses IKEv1 Aggressive Mode with a pre-shared key unless this option
+# is set, and named it to make the refusal impossible to misread. It is right: the
+# responder hands out a hash of the PSK to anyone who asks, which is crackable
+# offline — that is precisely why rule IKE-03 is Critical rather than High.
+#
+# The testbed must be able to BUILD the insecure configuration in order to capture it
+# and prove the analyser detects it. This setting therefore belongs to the lab and to
+# nothing else; it is never emitted by the remediation generators, which exist to move
+# real deployments off exactly this.
+RUN printf 'charon {\n    i_dont_care_about_security_and_use_aggressive_mode_psk = yes\n}\n' \
+    > /etc/strongswan.d/99-testbed-aggressive-mode.conf
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]

@@ -1,0 +1,111 @@
+[project]
+name = "ipsec-sentinel"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "scapy>=2.5.0",
+    "pydantic>=2.5.0",
+    "pyyaml>=6.0",
+    "click>=8.1",
+    "rich>=13.0",
+    "pandas>=2.1",
+    "pyarrow>=14.0",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+ml = ["scikit-learn>=1.3", "xgboost>=2.0", "shap>=0.44", "joblib>=1.3"]
+api = [
+    "fastapi>=0.109",
+    "uvicorn>=0.27",
+    # Uploads are multipart; without this FastAPI rejects the analyse endpoint
+    # at import time rather than at request time, which is at least loud.
+    "python-multipart>=0.0.9",
+]
+report = ["jinja2>=3.1", "weasyprint>=60.0"]
+dev = [
+    "pytest>=7.4", "pytest-cov>=4.1", "pytest-xdist>=3.5",
+    "hypothesis>=6.92", "mypy>=1.8", "ruff>=0.1.14",
+    "types-PyYAML", "pandas-stubs",
+    # Validates the exported report against the published JSON schema. A schema
+    # nothing checks against is documentation, not a contract.
+    "jsonschema>=4.21",
+    "types-jsonschema",
+    # Starlette's TestClient is an httpx client; the API tests need it.
+    "httpx>=0.27",
+    # The dashboard's failures are invisible to every other kind of test: a CSP that
+    # blocks the page's own script, a CSS rule that out-specifies [hidden]. Both
+    # happened, and only a real browser found them.
+    "playwright>=1.44",
+]
+
+[project.scripts]
+sentinel = "ipsec_sentinel.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# The compliance baselines are data, not code, and are loaded from the installed
+# package at runtime. Without this they are absent from a wheel and every baseline
+# lookup fails only once the tool is installed rather than run from a checkout.
+ipsec_sentinel = [
+    "assess/baselines/*.yaml",
+    "assess/baselines/*.example",
+    # Same reasoning for the report template: without it a wheel renders no
+    # report at all, and only once installed rather than run from a checkout.
+    "report/templates/*.j2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: requires Docker/root (deselect with '-m \"not integration\"')",
+    "slow: takes more than 5 seconds",
+]
+addopts = "-q --strict-markers"
+
+[[tool.mypy.overrides]]
+# python-pptx ships only partial type information: RGBColor, add_paragraph and several
+# shape constructors carry no annotations, so every call into them reads as untyped.
+# Narrowed to the deck and video builders — the product itself stays fully strict, and
+# these modules keep their own annotations and return types.
+module = ["scripts.deck.*", "scripts.video.*", "demo.*"]
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+# These scientific packages ship no type information. Ignoring them here is narrower
+# than a global relaxation: everything this project writes stays strictly typed.
+module = ["sklearn.*", "joblib.*", "xgboost.*", "scipy.*", "shap.*", "weasyprint.*"]
+ignore_missing_imports = true
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+files = ["src", "testbed", "scripts", "demo"]
+
+# slixmpp runs inside the traffic container, not on the host, so it is deliberately
+# absent from the host venv. Only its stubs are waived — the script's own code is
+# still fully type-checked.
+[[tool.mypy.overrides]]
+module = "slixmpp.*"
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint.per-file-ignores]
+# These two scripts emit Markdown documents, and their tables are written as literal
+# rows inside triple-quoted strings. Wrapping a row to satisfy the line limit would
+# break the table in the generated document, which is the artefact that matters.
+"scripts/confound_audit.py" = ["E501"]
+"scripts/generalisation_report.py" = ["E501"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "A", "C4", "SIM", "ARG", "PTH", "RUF"]

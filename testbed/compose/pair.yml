@@ -1,0 +1,148 @@
+# Two IPsec peers on an isolated transit network, each fronting its own protected
+# subnet — the site-to-site shape the whole testbed models.
+#
+# Subnets and addresses are parameterised so the Step 3.2 sweep can run several pairs
+# concurrently on distinct networks without editing this file. Defaults match the
+# single-pair case used by the integration tests.
+#
+# privileged + NET_ADMIN are required, not conveniences: the peers manipulate kernel
+# XFRM state and routing, which is precisely what this testbed exists to exercise.
+
+services:
+  left:
+    image: ${SENTINEL_IMAGE:-ipsec-sentinel-strongswan:latest}
+    hostname: left
+    privileged: true
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    environment:
+      SENTINEL_PSK: ${SENTINEL_PSK:-}
+    volumes:
+      - ${LEFT_CONF:-../configs/left/swanctl.conf}:/etc/swanctl/swanctl.conf:ro
+    networks:
+      transit:
+        ipv4_address: ${LEFT_TRANSIT_IP:-10.100.0.2}
+      left_protected:
+        ipv4_address: ${LEFT_PROTECTED_IP:-10.1.0.2}
+
+  right:
+    image: ${SENTINEL_IMAGE:-ipsec-sentinel-strongswan:latest}
+    hostname: right
+    privileged: true
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+    environment:
+      SENTINEL_PSK: ${SENTINEL_PSK:-}
+    volumes:
+      - ${RIGHT_CONF:-../configs/right/swanctl.conf}:/etc/swanctl/swanctl.conf:ro
+    networks:
+      transit:
+        ipv4_address: ${RIGHT_TRANSIT_IP:-10.100.0.3}
+      right_protected:
+        ipv4_address: ${RIGHT_PROTECTED_IP:-10.2.0.2}
+
+  # Hosts behind each gateway. These exist so the inner tap can see plaintext in BOTH
+  # directions: traffic a gateway generates itself never crosses its protected
+  # interface, so capturing on the gateway alone yields only the inbound decrypted
+  # half — enough to look like it works, and badly wrong as ML training data.
+  left_host:
+    image: ${SENTINEL_TRAFFIC_IMAGE:-ipsec-sentinel-traffic:latest}
+    hostname: left-host
+    cap_add: [NET_ADMIN]
+    entrypoint: ["sh", "-c", "ip route replace ${RIGHT_PROTECTED_SUBNET:-10.2.0.0/24} via ${LEFT_PROTECTED_IP:-10.1.0.2} && sleep infinity"]
+    depends_on: [left]
+    networks:
+      left_protected:
+        ipv4_address: ${LEFT_HOST_IP:-10.1.0.10}
+
+  right_host:
+    image: ${SENTINEL_TRAFFIC_IMAGE:-ipsec-sentinel-traffic:latest}
+    hostname: right-host
+    cap_add: [NET_ADMIN]
+    entrypoint: ["sh", "-c", "ip route replace ${LEFT_PROTECTED_SUBNET:-10.1.0.0/24} via ${RIGHT_PROTECTED_IP:-10.2.0.2} && sleep infinity"]
+    depends_on: [right]
+    networks:
+      right_protected:
+        ipv4_address: ${RIGHT_HOST_IP:-10.2.0.10}
+
+  # Content origin behind the RIGHT gateway, so streaming traffic crosses the tunnel
+  # and arrives downstream-heavy at the left host. Behind a compose profile: it starts
+  # only for runs that need it, which is what TrafficGenerator.requires expresses.
+  video_origin:
+    image: ${SENTINEL_VIDEO_IMAGE:-ipsec-sentinel-video:latest}
+    hostname: video-origin
+    profiles: [video]
+    cap_add: [NET_ADMIN]
+    # The return route is not optional. Without it the origin answers via Docker's
+    # bridge rather than the tunnel, so the request is encrypted and the response is
+    # not — and whether that happens at all varies between runs.
+    entrypoint: ["sh", "-c", "ip route replace ${LEFT_PROTECTED_SUBNET:-10.1.0.0/24} via ${RIGHT_PROTECTED_IP:-10.2.0.2} && exec nginx -g 'daemon off;'"]
+    networks:
+      right_protected:
+        ipv4_address: ${VIDEO_ORIGIN_IP:-10.2.0.20}
+
+  # Web corpus origin, also behind the right gateway and also behind a profile.
+  web_origin:
+    image: ${SENTINEL_WEB_IMAGE:-ipsec-sentinel-web:latest}
+    hostname: web-origin
+    profiles: [web]
+    cap_add: [NET_ADMIN]
+    entrypoint: ["sh", "-c", "ip route replace ${LEFT_PROTECTED_SUBNET:-10.1.0.0/24} via ${RIGHT_PROTECTED_IP:-10.2.0.2} && exec nginx -g 'daemon off;'"]
+    networks:
+      right_protected:
+        ipv4_address: ${WEB_ORIGIN_IP:-10.2.0.21}
+
+  # Real Postfix + Dovecot behind the right gateway. The mailbox password is
+  # generated per run and passed in, so no credential is committed or baked in.
+  mail_origin:
+    image: ${SENTINEL_MAIL_IMAGE:-ipsec-sentinel-mail:latest}
+    hostname: mail-origin
+    profiles: [mail]
+    cap_add: [NET_ADMIN]
+    environment:
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_USER: ${MAIL_USER:-tester}
+      FAR_SUBNET: ${LEFT_PROTECTED_SUBNET:-10.1.0.0/24}
+      VIA_GATEWAY: ${RIGHT_PROTECTED_IP:-10.2.0.2}
+    networks:
+      right_protected:
+        ipv4_address: ${MAIL_ORIGIN_IP:-10.2.0.22}
+
+  # Prosody, behind the right gateway. Genuine XMPP, used as a documented shape
+  # proxy for consumer messaging — never presented as WhatsApp.
+  xmpp_origin:
+    image: ${SENTINEL_XMPP_IMAGE:-ipsec-sentinel-xmpp:latest}
+    hostname: xmpp-origin
+    profiles: [messaging]
+    cap_add: [NET_ADMIN]
+    environment:
+      XMPP_PASSWORD: ${XMPP_PASSWORD:-}
+      XMPP_DOMAIN: ${XMPP_DOMAIN:-testbed.local}
+      FAR_SUBNET: ${LEFT_PROTECTED_SUBNET:-10.1.0.0/24}
+      VIA_GATEWAY: ${RIGHT_PROTECTED_IP:-10.2.0.2}
+    networks:
+      right_protected:
+        ipv4_address: ${XMPP_ORIGIN_IP:-10.2.0.23}
+
+networks:
+  # The link an observer taps: carries IKE on UDP 500/4500 and ESP.
+  transit:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${TRANSIT_SUBNET:-10.100.0.0/24}
+  # The cleartext sides, behind each gateway. Note the peers take .2, not .1:
+  # Docker reserves the first address of every subnet for the bridge gateway, and
+  # requesting it fails with a bare "Address already in use".
+  left_protected:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${LEFT_PROTECTED_SUBNET:-10.1.0.0/24}
+  right_protected:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${RIGHT_PROTECTED_SUBNET:-10.2.0.0/24}

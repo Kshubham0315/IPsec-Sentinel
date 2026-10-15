@@ -1,1227 +1,428 @@
 # IPsec Sentinel
 
-### Encrypted IPsec Traffic Intelligence, Open-Set Detection & Security Analytics
+> **Passive IPsec protocol analysis, cryptographic compliance assessment, and automated zero-downtime remediation.**  
+> Built for **Smart India Hackathon 2026 — Problem Statement 160**.
 
-
-IPsec Sentinel is a passive, ML-enhanced security auditing and encrypted traffic intelligence framework for IPsec/IKE VPN networks.
-
-The system follows a strict separation between deterministic protocol analysis and probabilistic machine learning:
-
-> **Facts are parsed. Estimates are inferred.**
-
-IKE control-plane information is analyzed deterministically using protocol rules and security baselines, while encrypted ESP traffic is analyzed exclusively through observable metadata such as packet size, inter-arrival time, directionality, burst patterns, and temporal behavior.
-
-The upgraded architecture extends the original tabular ML pipeline into a research-oriented system supporting:
-
-* Temporal packet-sequence modeling
-* Self-supervised representation learning
-* Open-set / OOD detection
-* Encrypted-flow anomaly detection
-* C2 / beacon / exfiltration behavior analysis
-* Traffic-morphing robustness evaluation
-* Protocol-aware adversarial training
-* Synthetic encrypted-flow augmentation
-* Cross-network generalization
-* Real-time streaming inference
-* ONNX / TensorRT optimized deployment
-* Evidence-aware classification and abstention
+Point IPsec Sentinel at a network packet capture (`.pcap`) or a live interface; get back a graded, cited compliance assessment of every VPN tunnel in your estate, an AI-inferred traffic breakdown without payload decryption, and ready-to-deploy, zero-downtime configuration change packages for weak gateways.
 
 ---
 
+## Table of Contents
 
+- [1. Executive Summary & Core Philosophy](#1-executive-summary--core-philosophy)
+  - [The Fundamental Problem](#the-fundamental-problem)
+  - [Core Design Law: Facts vs Estimates](#core-design-law-facts-vs-estimates)
+  - [The "Rekey Blind Spot" Problem](#the-rekey-blind-spot-problem)
+- [2. End-to-End Architecture & Data Flow](#2-end-to-end-architecture--data-flow)
+- [3. Deep Dive: How Each Component Works](#3-deep-dive-how-each-component-works)
+  - [3.1 Parser & Correlation Engine (`parser/`)](#31-parser--correlation-engine-parser)
+  - [3.2 Kernel State Ingestion (`collect.py` & `--device-state`)](#32-kernel-state-ingestion-collectpy---device-state)
+  - [3.3 Deterministic Compliance & Scoring Engine (`assess/`)](#33-deterministic-compliance--scoring-engine-assess)
+  - [3.4 Encrypted Traffic Inference via ML (`features/` & `ml/`)](#34-encrypted-traffic-inference-via-ml-features--ml)
+  - [3.5 Automated Zero-Downtime Remediation Engine (`remediate/`)](#35-automated-zero-downtime-remediation-engine-remediate)
+  - [3.6 Continuous Live Monitoring (`watch.py`)](#36-continuous-live-monitoring-watchpy)
+  - [3.7 Web Dashboard & REST API (`dashboard/` & `api/`)](#37-web-dashboard--rest-api-dashboard--api)
+- [4. Quickstart Guide](#4-quickstart-guide)
+  - [Running via Docker (Recommended)](#running-via-docker-recommended)
+  - [Running via Local Python](#running-via-local-python)
+- [5. CLI Reference & Usage Workflows](#5-cli-reference--usage-workflows)
+- [6. Security Posture of the Tool](#6-security-posture-of-the-tool)
+- [7. Repository File Map](#7-repository-file-map)
+- [8. Development & Verification](#8-development--verification)
 
-## Core Philosophy
+---
+
+## 1. Executive Summary & Core Philosophy
+
+### The Fundamental Problem
+
+Traditional network inspection tools like Wireshark or `tcpdump` show raw protocol bytes. When an engineer inspects an IPsec IKE exchange, Wireshark will decode that the two endpoints agreed on `ENCR_3DES` with `DH_GROUP_2` (1024-bit MODP). 
+
+However, **Wireshark will not tell you**:
+- That NIST disallowed 3DES and 1024-bit MODP in 2023.
+- That this exchange is vulnerable to the **Logjam** attack (CVE-2015-4000) and **Sweet32** (CVE-2016-2183).
+- That the tunnel violates national standards such as **CERT-In** or **NIST SP 800-77 Rev. 1**.
+- Exactly what configuration commands must be executed on the specific gateway (Cisco, Fortinet, StrongSwan, etc.) to remediate it safely without cutting off production traffic.
+
+**IPsec Sentinel bridges the gap between *visible* and *judged*.**
+
+```
+┌────────────────────────┐      ┌──────────────────────────────┐      ┌─────────────────────────────┐
+│      Packet Capture    │ ───▶ │        IPsec Sentinel        │ ───▶ │  Actionable Intelligence    │
+│  Raw IKE & ESP Packets │      │  Parse + Assess + Infer + Fix│      │  Grade, CVEs, Fix Script    │
+└────────────────────────┘      └──────────────────────────────┘      └─────────────────────────────┘
+```
+
+---
+
+### Core Design Law: Facts vs Estimates
+
+One strict principle governs the entire codebase:
+
+> **"Facts are parsed. Estimates are inferred."**
+
+```
+                          ┌────────────────────────┐
+                          │   Parsed Packet Data   │
+                          └───────────┬────────────┘
+                                      │
+                 ┌────────────────────┴────────────────────┐
+                 ▼                                         ▼
+     ┌────────────────────────┐               ┌────────────────────────┐
+     │  Section A: Verified   │               │  Section B: Inferred   │
+     │  Deterministic Facts   │               │  Machine Learning      │
+     │  (Confidence: None)    │               │  (Calibrated Conf)     │
+     │  From Cleartext IKE/SA │               │  From Encrypted ESP    │
+     └────────────────────────┘               └────────────────────────┘
+```
+
+- **Section A (Verified Findings)**: Deterministic, cryptographic facts read from cleartext IKE headers and transforms. Every finding here carries `confidence = None`, cites standard clauses, and can withstand regulatory audit.
+- **Section B (Inferred Findings)**: Behavioral intelligence derived from encrypted ESP flows (packet sizing, timings, directions). Every finding carries a calibrated confidence score and SHAP explanations. Payload data is **NEVER decrypted**.
+- **Code-Enforced Separation**: A Pydantic validator (`Report.enforce_separation`) mathematically rejects the generation of any report that mixes an inference into Section A or a deterministic fact into Section B.
+
+---
+
+### The "Rekey Blind Spot" Problem
+
+A standard packet capture tells you what a tunnel **negotiated** during setup. However, it cannot tell you what cryptographic parameters that tunnel is running **right now**.
+
+**Why?**
+1. In IKEv2, only `IKE_SA_INIT` is in cleartext.
+2. Subsequent rekeying and child SAs are negotiated inside `CREATE_CHILD_SA`, which is **fully encrypted**.
+3. A tunnel might establish with AES-256 and Group 19 (looking 100% secure on the wire), but silently rekey later to deprecated 3DES/MD5 in the Linux/gateway kernel.
+
+```
+Time ──▶
+[IKE_SA_INIT: Cleartext] ──▶ AES-256 negotiated (Looks Strong on Wire!)
+          │
+[CREATE_CHILD_SA: Encrypted] ──▶ Silent rekey down to 3DES-CBC in Kernel! (Invisible to wire sniffers)
+```
+
+**How IPsec Sentinel Solves It**:
+IPsec Sentinel accepts a read-only gateway state export (`ip xfrm state` or `swanctl --list-sas`) via the `--device-state` flag:
+```bash
+sentinel analyse capture.pcap --device-state gw-state.xfrm.txt
+```
+It cross-correlates the active kernel SA SPIs with the capture. If a tunnel rekeyed to an insecure cipher in the kernel, Sentinel flags it immediately—dropping an apparently healthy estate score from **33/100 down to 12/100**. This is done **passively without SSH credentials**.
+
+---
+
+## 2. End-to-End Architecture & Data Flow
+
+```
+                      ┌──────────────────────────────────────────┐
+                      │ Input: PCAP file or Live Wire Interface  │
+                      └────────────────────┬─────────────────────┘
+                                           │
+                                           ▼
+                      ┌──────────────────────────────────────────┐
+                      │    parser/ Custom Bounds-Safe Parser     │
+                      │  - Decodes IKEv1 / IKEv2 / NAT-T 4500    │
+                      │  - Reconstructs ESP Flow Assemblies      │
+                      │  - Correlates SPIs & 5-Tuples to Tunnels │
+                      └────────────────────┬─────────────────────┘
+                                           │ Correlated Tunnel Objects
+                     ┌─────────────────────┴─────────────────────┐
+                     │                                           │
+                     ▼                                           ▼
+      ┌─────────────────────────────┐             ┌─────────────────────────────┐
+      │     DETERMINISTIC LANE      │             │       INFERENCE LANE        │
+      │  assess/rules/ (26 Rules)   │             │  features/ (42 Telemetry)   │
+      │  NIST, BSI, CERT-In, CNSA   │             │  ml/ (RandomForest/XGBoost) │
+      │  Device State Verification  │             │  Calibrated Confidence      │
+      │  PQC Readiness (RFC 9370)   │             │  SHAP Explanations          │
+      └──────────────┬──────────────┘             └──────────────┬──────────────┘
+                     │ Section A Findings                        │ Section B Findings
+                     └─────────────────────┬─────────────────────┘
+                                           │
+                                           ▼
+                      ┌──────────────────────────────────────────┐
+                      │    report/ Strict Two-Lane Aggregator    │
+                      │  - Validates Section A / B separation    │
+                      │  - Calculates weighted estate grade      │
+                      └────────────────────┬─────────────────────┘
+                                           │
+             ┌─────────────────────────────┼─────────────────────────────┐
+             ▼                             ▼                             ▼
+   ┌───────────────────┐         ┌───────────────────┐         ┌───────────────────┐
+   │  Human Interfaces │         │ Automated Fixes   │         │ SIEM / Security   │
+   │  - HTML / PDF     │         │ - remediate/      │         │ - CEF / LEEF      │
+   │  - Web Dashboard  │         │ - 6 Vendor Syntax │         │ - JSON Schema v1.3│
+   │  - CLI output     │         │ - 0s Outage Steps │         │ - Syslog stream   │
+   └───────────────────┘         └───────────────────┘         └───────────────────┘
+```
+
+---
+
+## 3. Deep Dive: How Each Component Works
+
+### 3.1 Parser & Correlation Engine (`parser/`)
+Located in [`src/ipsec_sentinel/parser/`](src/ipsec_sentinel/parser/):
+
+- **Bounds-Safe Byte Reader (`reader.py`)**: Custom binary stream parser with memory safety checks. Guarantees that truncated or crafted malicious packets cannot cause buffer over-reads or unhandled exceptions.
+- **Payload Chain Walker (`chain.py`)**: Iterates through IKE payload chains using recursion-proof loop guards. If an attacker injects circular next-payload pointers, the parser terminates safely without stalling.
+- **IKEv1 & IKEv2 Dissection (`ikev1.py`, `ikev2.py`)**:
+  - Parses `IKE_SA_INIT`, `IKE_AUTH`, Proposals, Transforms, Key Exchange (KE), Nonces, Vendor IDs.
+  - Detects IKEv1 **Aggressive Mode** and flags exposed Pre-Shared Key (PSK) hashes vulnerable to offline dictionary attacks.
+  - Handles **NAT-Traversal (UDP 4500)** by stripping the 4-byte zero non-ESP marker (`0x00000000`) before decoding the encapsulated IKE payload.
+- **ESP Flow Assembly (`esp.py`)**: Groups raw ESP packets by Security Parameter Index (SPI), source IP, destination IP, and protocol. Tracks sequence numbers to identify packet loss and replay window violations.
+- **Tunnel Correlation (`correlate.py`)**: Connects the control plane (IKE) to the data plane (ESP). Matches negotiated initiator/responder SPIs with active ESP packet headers, assembling a unified `Tunnel` model.
+
+---
+
+### 3.2 Kernel State Ingestion (`collect.py` & `--device-state`)
+Located in [`src/ipsec_sentinel/collect.py`](src/ipsec_sentinel/collect.py):
+
+- **No Active Connections / No SSH**: The system strictly forbids running SSH or remote execution agents to protect against network credential exposure.
+- **Offline Parser**: Operators provide read-only command output:
+  - Linux Native: `ip xfrm state` and `ip xfrm policy`
+  - strongSwan: `swanctl --list-sas`
+- **Reconciliation**: Parses active encryption ciphers, auth algorithms, replay window sizes, and lifetime counters. If the kernel has downgraded an active SA compared to the wire capture, Sentinel generates an explicit `DEV-01` / `DEV-02` warning.
+
+---
+
+### 3.3 Deterministic Compliance & Scoring Engine (`assess/`)
+Located in [`src/ipsec_sentinel/assess/`](src/ipsec_sentinel/assess/):
+
+- **26 Deterministic Rules** ([`docs/RULES.md`](docs/RULES.md)):
+  - **Cryptographic Algorithms (CRY-01 to CRY-10)**: 3DES, DES, Blowfish, RC4, MD5, SHA-1, weak DH groups (< 2048-bit MODP or weak elliptic curves).
+  - **IKE Configuration (IKE-01 to IKE-04)**: Insecure aggressive mode, unauthenticated notifications, short cookie validation.
+  - **Forward Secrecy & SAs (PFS-01 to SA-04)**: Rekey lifetimes > 24 hours or > 250 GB data, absence of Perfect Forward Secrecy.
+  - **Anomalies (ANOMALY-01 to ANOMALY-04)**: Replay counter rollover, undocumented tunnel endpoints.
+- **Multi-Standard Compliance Baselines**:
+  - `nist_800_77r1`: NIST Special Publication 800-77 Revision 1.
+  - `bsi_tr_02102_3`: German Federal Office for Information Security (BSI).
+  - `cnsa_1_0`: Commercial National Security Algorithm Suite.
+  - `cert_in`: Indian Computer Emergency Response Team directives.
+  - `rfc_8221_8247`: Core cryptographic requirements for IPsec/IKEv2.
+  - `itsar`: Indian Telecom Security Assurance Requirements.
+- **Post-Quantum Cryptography (PQC) Grading**:
+  - Inspects support for **RFC 9370** (Multiple Key Exchanges in IKEv2) and **RFC 8784** (Post-quantum Pre-Shared Keys - PPK).
+- **Scoring Algorithm**:
+  - Base score: 100 points.
+  - Weighted deductions per finding severity (Critical: -40, High: -25, Medium: -10, Low: -3).
+  - Letter Grade Mapping: A (90-100), B (80-89), C (70-79), D (60-69), F (< 60).
+
+---
+
+### 3.4 Encrypted Traffic Inference via ML (`features/` & `ml/`)
+Located in [`src/ipsec_sentinel/features/`](src/ipsec_sentinel/features/) and [`src/ipsec_sentinel/ml/`](src/ipsec_sentinel/ml/):
+
+- **Zero Decryption Principle**: Inspects only packet length, inter-arrival timing, burst dynamics, and directionality.
+- **42 Flow Features Extracted**:
+  - *Packet Size Distribution*: Mean, standard deviation, median, 25th/75th/90th percentiles, forward/backward size ratios.
+  - *Inter-Arrival Time (IAT)*: Mean, std, median, 90th percentile jitter.
+  - *Burst Dynamics*: Burst packet count, mean burst length, idle time between bursts.
+  - *Entropy & Fractions*: Shannon size entropy, small packet fraction (< 128 bytes - indicator for VoIP/chat), MTU packet fraction.
+- **Classifier & Explainability**:
+  - Model: Calibrated Random Forest / XGBoost trained on laboratory traffic sweeps.
+  - Predicts 7 traffic classes: `VoIP`, `Video`, `Web`, `Email`, `Messaging`, `ICMP`, `Replay`.
+  - **Abstention Logic**: If class probability falls below threshold (ambiguous traffic), the model yields `Abstain` rather than hallucinating.
+  - **SHAP (SHapley Additive exPlanations)**: Every inference provides top contributing flow features so operators understand why a tunnel was labeled VoIP or Bulk.
+
+---
+
+### 3.5 Automated Zero-Downtime Remediation Engine (`remediate/`)
+Located in [`src/ipsec_sentinel/remediate/`](src/ipsec_sentinel/remediate/):
+
+- **Multi-Vendor Configuration Generators**:
+  - **strongSwan** (`swanctl.conf`)
+  - **Libreswan** (`ipsec.conf`)
+  - **Cisco ASA / IOS-XE** (`crypto ikev2 proposal`, `crypto ipsec profile`)
+  - **Fortinet FortiGate** (`config vpn ipsec phase1-interface`)
+  - **Juniper JunOS** (`set security ike proposal`, `set security ipsec proposal`)
+  - **Palo Alto PAN-OS** (`set network ike crypto-profiles`)
+- **Zero-Downtime Migration Sequencing**:
+  - *The Danger*: Changing crypto on both peers simultaneously cuts traffic if one gateway applies the configuration before the other.
+  - *The Fix*: Sentinel generates a **3-stage phased rollout**:
+    1. **Stage 1 (Add Overlapping Proposal)**: Add the new secure proposal to Peer A without removing the legacy proposal.
+    2. **Stage 2 (Switch Active Proposal)**: Switch Peer B to prefer the new proposal. Negotiation renegotiates cleanly to the new cipher with **0.00s downtime**.
+    3. **Stage 3 (Deprecate Legacy Proposal)**: Remove the weak legacy cipher from Peer A.
+- **Blast Radius & Verification**:
+  - Calculates subnets, route dependencies, and estimated impact.
+  - `sentinel verify-fix capture2.pcap` verifies whether the new wire capture actually eliminated the vulnerability.
+
+---
+
+### 3.6 Continuous Live Monitoring (`watch.py`)
+Located in [`src/ipsec_sentinel/watch.py`](src/ipsec_sentinel/watch.py):
+
+- Runs directly against a live network interface (e.g. `eth0`, `any`).
+- Maintains an in-memory ring buffer of observed SAs and SPIs.
+- **Drift Detection**: Alerts in real time if:
+  - A new undocumented tunnel appears on the network (Shadow VPN alert).
+  - An established tunnel rekeys to a weaker cipher suite.
+  - Sequence numbers roll over or drop abnormally.
+- Outputs structured logs, JSON, or SIEM CEF events.
+
+---
+
+### 3.7 Web Dashboard & REST API (`dashboard/` & `api/`)
+Located in [`dashboard/`](dashboard/) and [`src/ipsec_sentinel/api/`](src/ipsec_sentinel/api/):
+
+- **FastAPI Backend**:
+  - `POST /api/v1/analyse`: Multipart upload of `.pcap` and optional device state files.
+  - `GET /api/v1/tunnels`: Lists discovered tunnels and their individual security scores.
+  - `GET /api/v1/report.pdf` / `report.html`: Downloads formatted executive reports.
+- **Modern Dashboard UI**:
+  - Built with Vanilla HTML5, CSS3, and JavaScript without bloatware frameworks.
+  - Zero `unsafe-inline` scripts; strict **Content Security Policy (CSP)**.
+  - Interactive estate grade dial, findings viewer, and tunnel drill-down tables.
+
+---
+
+## 4. Quickstart Guide
+
+### Running via Docker (Recommended)
+
+Docker provides an isolated, zero-dependency environment:
+
+```bash
+# 1. Clone repository
+git clone https://github.com/PrashamJ17/SIH_PS160.git
+cd SIH_PS160
+
+# 2. Start the API engine and web dashboard
+docker compose up -d
+```
+- Web Dashboard: **<http://127.0.0.1:8080>**
+- REST API Documentation: **<http://127.0.0.1:8000/docs>**
+
+Drop any PCAP from `demo/pcaps/` onto the web dashboard to see immediate analysis.
+
+---
+
+### Running via Local Python
+
+Requirements: **Python 3.11+**
+
+```bash
+# 1. Create and activate a virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# 2. Install package with all extras
+pip install -e ".[ml,api,report,dev]"
+
+# 3. Verify installation
+sentinel version
+```
+
+---
+
+## 5. CLI Reference & Usage Workflows
+
+| Command | Action | Transmits Packets? |
+|---|---|:---:|
+| `sentinel analyse` | Analyze pcap capture and generate reports | **No** (Passive) |
+| `sentinel inventory` | Compare capture against approved `tunnels.yaml` | **No** (Passive) |
+| `sentinel remediate` | Generate dual-ended vendor configuration fix | **No** (Passive) |
+| `sentinel watch` | Live monitoring on network interface | **No** (Passive) |
+| `sentinel scan` | Active capability scanning (requires `--i-have-authorisation`) | **Yes** (Active) |
+| `sentinel model` | Train / evaluate encrypted traffic ML models | **No** (Local) |
+
+### Common CLI Examples
+
+#### 1. Analyze a Single Capture
+```bash
+sentinel analyse demo/pcaps/01-worst-ikev1-aggressive-3des-voip.pcap --out report.html
+```
+
+#### 2. Full Audit with Device State, Inventory, and PDF Export
+```bash
+sentinel analyse demo/pcaps/04-estate.pcap \
+  --baseline nist_800_77r1 \
+  --known demo/tunnels.yaml \
+  --device-state demo/state/gw-chennai.xfrm.txt \
+  --out report.html \
+  --pdf report.pdf \
+  --json report.json
+```
+
+#### 3. Identify Undocumented Rogue VPNs
+```bash
+sentinel inventory demo/pcaps/04-estate.pcap --known demo/tunnels.yaml
+```
+
+#### 4. Generate Zero-Downtime strongSwan Fix
+```bash
+sentinel remediate demo/pcaps/01-worst-ikev1-aggressive-3des-voip.pcap \
+  --vendor strongswan \
+  --out ./remediation_package/
+```
+
+#### 5. Live Interface Monitoring
+```bash
+sentinel watch eth0 --baseline nist_800_77r1
+```
+
+---
+
+## 6. Security Posture of the Tool
+
+IPsec Sentinel is designed for high-security, defense, and sovereign enterprise environments:
+
+1. **Air-Gapped Operation**: Runs completely offline without internet connectivity. Verified under Docker `--network none`.
+2. **Zero-Credential Guarantee**: The tool never asks for, stores, or transmits passwords, private keys, or SSH credentials.
+3. **No Device Write Permissions**: Contains no SSH, Telnet, NETCONF, or vendor API clients. An automated AST code scanner verifies this in `tests/unit/test_security.py`.
+4. **Memory & Parsing Safety**: Custom bounds-checked byte reading prevents buffer overflows and denial-of-service vulnerabilities.
+5. **Zero Vulnerabilities**: Checked against `pip-audit` with zero reported CVE advisories across all dependencies.
+
+---
+
+## 7. Repository File Map
 
 ```text
-                     IPsec Sentinel
-                           │
-              ┌────────────┴────────────┐
-              │                         │
-       Deterministic Analysis      ML Inference
-              │                         │
-          IKE Facts                ESP Estimates
-              │                         │
-      Protocol / Crypto          Flow Behavior
-          Validation             Classification
-              │                         │
-              └────────────┬────────────┘
-                           │
-                    Security Decision
-```
-
-The system never attempts to decrypt or inspect ESP payload content.
-
-Instead, it learns from the observable structure of encrypted communication.
-
----
-
-# Architecture
-
-## End-to-End Architecture
-
-```mermaid
-flowchart TB
-
-    A["Network Interface / PCAP"] --> B["Packet Capture Layer"]
-
-    B --> C["IPsec Flow Builder"]
-
-    C --> D1["IKE Parser"]
-    C --> D2["ESP Metadata Extractor"]
-
-    D1 --> E["Deterministic Protocol & Crypto Analysis"]
-
-    D2 --> F["Streaming Flow Representation"]
-
-    F --> G1["Statistical Feature Engine"]
-    F --> G2["Packet Sequence Engine"]
-
-    G1 --> H1["XGBoost / Random Forest Baseline"]
-
-    G2 --> H2["Temporal CNN"]
-    G2 --> H3["TCN"]
-    G2 --> H4["BiLSTM"]
-    G2 --> H5["Temporal Transformer"]
-
-    H2 --> I["Flow Representation"]
-    H3 --> I
-    H4 --> I
-    H5 --> I
-
-    I --> J1["Traffic Classifier"]
-    I --> J2["OOD Detector"]
-    I --> J3["Anomaly Detector"]
-
-    J1 --> K["Decision & Abstention Layer"]
-    J2 --> K
-    J3 --> K
-
-    E --> K
-
-    K --> L1["Known Application"]
-    K --> L2["Unknown / OOD"]
-    K --> L3["Suspicious / Anomalous"]
-    K --> L4["Insufficient Evidence"]
-
-    K --> M["Explainability & Evidence"]
+SIH_PS160/
+├── src/ipsec_sentinel/         # Core application package
+│   ├── parser/                 # Binary IKEv1, IKEv2, NAT-T, and ESP decoders
+│   ├── assess/                 # 26 Rules, Compliance Baselines, PQC grader
+│   ├── collect.py              # Kernel SA state parser (ip xfrm, swanctl)
+│   ├── features/               # 42-feature telemetry extractor
+│   ├── ml/                     # ML models, calibration, abstention, SHAP
+│   ├── remediate/              # Multi-vendor zero-downtime config generators
+│   ├── report/                 # HTML, PDF, JSON, and SIEM renderers
+│   ├── watch.py                # Live interface drift monitor
+│   ├── probe.py                # Active IKE capability prober
+│   ├── api/                    # FastAPI REST routes and endpoints
+│   └── cli.py                  # CLI command entry point (`sentinel`)
+├── dashboard/                  # Lightweight Web UI (HTML5 / Vanilla JS / CSS)
+├── demo/                       # Sample PCAP captures, state dumps, and demo assets
+│   ├── pcaps/                  # Bundled real testbed captures
+│   ├── state/                  # Sample gateway kernel state files
+│   └── IPsec-Sentinel-demo.mp4 # Recorded video walkthrough
+├── docs/                       # Technical documentation set
+│   ├── ARCHITECTURE.md         # Two-lane design specifications
+│   ├── RULES.md                # Full registry of all 26 security rules
+│   ├── COMPLIANCE_BASELINES.md # Standard citations (NIST, BSI, CERT-In)
+│   ├── WALKTHROUGH.md          # 20-minute evaluator walkthrough
+│   └── LIMITATIONS.md          # Clear operational boundaries
+├── testbed/                    # Docker testbed with strongSwan and traffic generators
+├── tests/                      # 2,600+ unit and integration tests (100% coverage)
+├── Dockerfile                  # Production container definition (non-root UID 10001)
+├── docker-compose.yml          # Container orchestration for API + Dashboard
+└── Makefile                    # Single-entrypoint build and test orchestrator
 ```
 
 ---
 
-# ML Architecture
+## 8. Development & Verification
 
-The upgraded ML system uses a multi-model architecture instead of relying exclusively on handcrafted tabular features.
+To run the complete verification suite (code formatting, static typing, and 2,600+ unit tests):
 
-```mermaid
-flowchart LR
+```bash
+make verify
+```
 
-    A["ESP Packet Stream"] --> B["Sliding Window"]
+To run integration tests with Docker testbeds and live network emulation:
 
-    B --> C["packet_size"]
-    B --> D["inter_arrival_time"]
-    B --> E["direction"]
-
-    C --> F["Sequence Tensor"]
-    D --> F
-    E --> F
-
-    F --> G["Temporal Encoder"]
-
-    G --> G1["1D CNN"]
-    G --> G2["TCN"]
-    G --> G3["BiLSTM"]
-    G --> G4["Temporal Transformer"]
-
-    G1 --> H["Flow Embedding"]
-    G2 --> H
-    G3 --> H
-    G4 --> H
-
-    H --> I1["Classification Head"]
-    H --> I2["OOD Head"]
-    H --> I3["Anomaly Head"]
-
-    I1 --> J["Decision Layer"]
-    I2 --> J
-    I3 --> J
+```bash
+make verify-all
 ```
 
 ---
 
-# 1. Deterministic IPsec Analysis
+## License & Attribution
 
-The existing protocol analysis remains the source of authoritative facts.
-
-The deterministic layer handles:
-
-* IKE parsing
-* Security association inspection
-* Encryption algorithm identification
-* Integrity algorithm identification
-* Diffie-Hellman group analysis
-* Authentication configuration
-* Crypto-policy validation
-* NIST/CERT-In baseline checks
-* Security findings
-
-```text
-IKE / Control Plane
-        │
-        ▼
-Deterministic Parser
-        │
-        ├── Encryption
-        ├── Integrity
-        ├── Authentication
-        ├── DH Group
-        └── Configuration
-                  │
-                  ▼
-          Security Findings
-```
-
-Machine learning does not override deterministic protocol facts.
-
----
-
-# 2. ESP Flow Representation
-
-ESP payloads remain encrypted.
-
-The ML layer therefore operates on metadata:
-
-```text
-Packet
- ├── timestamp
- ├── packet size
- ├── direction
- └── flow identifier
-```
-
-A flow is represented as:
-
-```text
-[
-    [packet_size, inter_arrival_time, direction],
-    [packet_size, inter_arrival_time, direction],
-    [packet_size, inter_arrival_time, direction],
-    ...
-]
-```
-
-Example:
-
-```text
-[
-    [512,  0.012,  1],
-    [480,  0.018,  1],
-    [1180, 0.021, -1],
-    [1200, 0.019, -1]
-]
-```
-
-The sequence can be converted into fixed windows:
-
-```text
-N = 64 / 128 / 256 packets
-```
-
-with padding and attention masks for short flows.
-
----
-
-# 3. Feature Engineering
-
-The existing statistical representation is retained as the baseline.
-
-### Packet Statistics
-
-* Minimum packet size
-* Maximum packet size
-* Mean
-* Median
-* Standard deviation
-* Percentiles
-* Packet-size entropy
-
-### Temporal Statistics
-
-* Mean inter-arrival time
-* Median IAT
-* IAT variance
-* Burst duration
-* Burst frequency
-* Idle periods
-* Temporal entropy
-
-### Directional Statistics
-
-* Upload/download ratio
-* Direction transition rate
-* Direction entropy
-* Request/response asymmetry
-
-### Temporal-Spectral Features
-
-The upgraded system can additionally calculate:
-
-* Autocorrelation
-* Dominant frequency
-* Spectral entropy
-* FFT-based periodicity
-* Burst periodicity
-
-These features are particularly useful for identifying repetitive behaviors such as beaconing.
-
----
-
-# 4. Temporal Deep Learning
-
-The original:
-
-```text
-Flow statistics → XGBoost
-```
-
-pipeline is extended with sequence models.
-
-## 1D CNN
-
-CNN layers learn local temporal patterns:
-
-```text
-Packet Sequence
-      │
-      ▼
-Conv1D
-      │
-      ▼
-Conv1D
-      │
-      ▼
-Pooling
-      │
-      ▼
-Flow Embedding
-```
-
-Useful for:
-
-* Burst patterns
-* Local packet-size transitions
-* Short request/response patterns
-
----
-
-## Temporal Convolutional Network
-
-TCN uses dilated convolutions to capture longer temporal dependencies.
-
-```mermaid
-flowchart LR
-
-    A["Input Sequence"] --> B["Dilation 1"]
-    B --> C["Dilation 2"]
-    C --> D["Dilation 4"]
-    D --> E["Dilation 8"]
-    E --> F["Dilation 16"]
-    F --> G["Flow Embedding"]
-```
-
-TCN is particularly useful for:
-
-* Periodic traffic
-* Long-range burst behavior
-* Beacon-like patterns
-* Low-latency inference
-
----
-
-## BiLSTM
-
-BiLSTM captures sequential dependencies across the flow.
-
-```text
-Packet Sequence
-      │
-      ▼
-Embedding
-      │
-      ▼
-BiLSTM
-      │
-      ▼
-Attention / Pooling
-      │
-      ▼
-Flow Representation
-```
-
----
-
-## Temporal Transformer
-
-A lightweight Transformer can learn long-range dependencies using attention.
-
-```text
-Packet Sequence
-      │
-      ▼
-Feature Projection
-      │
-      ▼
-Positional Encoding
-      │
-      ▼
-Transformer Encoder
-      │
-      ▼
-Attention Pooling
-      │
-      ▼
-Flow Embedding
-```
-
-The implementation intentionally uses small models because the initial labeled dataset is limited.
-
----
-
-# 5. Self-Supervised Learning
-
-A major objective is to reduce dependence on labeled IPsec captures.
-
-```mermaid
-flowchart TB
-
-    A["Unlabeled Encrypted Flows"] --> B["Flow Augmentation"]
-
-    B --> C1["Original View"]
-    B --> C2["Augmented View"]
-
-    C1 --> D1["Shared Flow Encoder"]
-    C2 --> D2["Shared Flow Encoder"]
-
-    D1 --> E1["Embedding z1"]
-    D2 --> E2["Embedding z2"]
-
-    E1 --> F["Contrastive Objective"]
-    E2 --> F
-
-    F --> G["Pretrained Flow Encoder"]
-
-    G --> H["Fine-tuning"]
-    H --> I["Small Labeled Dataset"]
-    I --> J["Traffic Classifier"]
-```
-
-Possible protocol-aware augmentations:
-
-* Small timing jitter
-* Packet masking
-* Sequence cropping
-* Subsequence sampling
-* MTU-aware size perturbation
-* Direction-preserving transformations
-
-Invalid transformations are rejected.
-
-For example:
-
-```text
-packet_size <= MTU
-IAT >= 0
-direction ∈ {-1, +1}
-```
-
-The objective is to learn a reusable representation of encrypted traffic before supervised fine-tuning.
-
----
-
-# 6. Open-Set Recognition
-
-Traditional classifiers assume every test sample belongs to a known class.
-
-IPsec Sentinel instead supports:
-
-```text
-Known
-Unknown
-Suspicious
-Insufficient Evidence
-```
-
-Architecture:
-
-```mermaid
-flowchart LR
-
-    A["ESP Flow"] --> B["Temporal Encoder"]
-
-    B --> C["Embedding"]
-
-    C --> D1["Known-Class Classifier"]
-    C --> D2["OOD Detector"]
-    C --> D3["Anomaly Detector"]
-
-    D1 --> E["Decision Engine"]
-    D2 --> E
-    D3 --> E
-
-    E --> F1["Known Application"]
-    E --> F2["Unknown Traffic"]
-    E --> F3["Suspicious Traffic"]
-    E --> F4["Abstain"]
-```
-
-Candidate OOD methods:
-
-* Mahalanobis distance
-* Energy-based scoring
-* Deep SVDD
-* Evidential Deep Learning
-* Embedding-space density estimation
-
----
-
-# 7. Anomaly Detection
-
-The security ML layer operates independently from application classification.
-
-```text
-Application Classification
-        ≠
-Security Anomaly Detection
-```
-
-This allows the system to detect suspicious behavior even when the application itself is unknown.
-
-Potential targets include:
-
-* Periodic C2-like communication
-* Covert channels
-* Data exfiltration patterns
-* Abnormal upload-heavy flows
-* Unusual burst behavior
-* Unexpected periodic traffic
-
----
-
-## Anomaly Detection Architecture
-
-```mermaid
-flowchart TB
-
-    A["Encrypted Flow"] --> B["Flow Encoder"]
-
-    B --> C["Embedding"]
-
-    C --> D1["Deep SVDD"]
-    C --> D2["Mahalanobis Distance"]
-
-    E["Statistical Features"] --> D3["Isolation Forest"]
-
-    D1 --> F["Anomaly Ensemble"]
-    D2 --> F
-    D3 --> F
-
-    F --> G["Anomaly Score"]
-
-    G --> H["Normal / Suspicious"]
-```
-
----
-
-# 8. Traffic Morphing & Adversarial Robustness
-
-Encrypted traffic classifiers can be affected by:
-
-* Packet padding
-* Timing jitter
-* Dummy packet injection
-* Burst splitting
-* Timing manipulation
-
-IPsec Sentinel includes a traffic-morphing evaluation layer.
-
-```mermaid
-flowchart LR
-
-    A["Original Flow"] --> B["Traffic Morphing Engine"]
-
-    B --> C1["Timing Jitter"]
-    B --> C2["Packet Padding"]
-    B --> C3["Dummy Packets"]
-    B --> C4["Burst Modification"]
-
-    C1 --> D["Adversarial Flow"]
-    C2 --> D
-    C3 --> D
-    C4 --> D
-
-    D --> E["ML Classifier"]
-
-    E --> F["Robustness Evaluation"]
-```
-
-Adversarial perturbations are constrained by networking requirements:
-
-```text
-packet_size <= MTU
-IAT >= 0
-valid direction
-realistic timing
-valid packet sequence
-```
-
-The system measures:
-
-```text
-Clean Performance
-        ↓
-Morphed Performance
-        ↓
-Performance Degradation
-```
-
----
-
-# 9. Synthetic Data Generation
-
-Real-world encrypted IPsec captures are difficult to collect because of privacy and operational constraints.
-
-The project therefore supports protocol-aware data augmentation and experimental synthetic generation.
-
-Candidate approaches:
-
-* TimeGAN
-* Time-series diffusion
-* TabDDPM
-* Flow-level generative models
-
-```mermaid
-flowchart TB
-
-    A["Real IPsec Flows"] --> B["Distribution Analysis"]
-
-    B --> C["Synthetic Flow Generator"]
-
-    C --> D["Generated Flows"]
-
-    D --> E["Physics / Protocol Validation"]
-
-    E --> F["Synthetic Dataset"]
-
-    F --> G["Training Augmentation"]
-
-    G --> H["Evaluation on REAL Held-Out Flows"]
-```
-
-Synthetic data is considered useful only if it improves performance on real unseen data.
-
-Validation includes:
-
-* Packet-size distributions
-* IAT distributions
-* Burst statistics
-* Directionality
-* Autocorrelation
-* Spectral properties
-* ML utility
-
----
-
-# 10. Domain Generalization
-
-Random train/test splitting can overestimate model performance when samples originate from the same test environment.
-
-IPsec Sentinel therefore supports environment-based evaluation.
-
-```text
-Training:
-
-Network A
-Network B
-Network C
-
-        ↓
-
-       Model
-
-        ↓
-
-Testing:
-
-Network D
-```
-
-The test environment remains completely unseen during training.
-
-The testbed can vary:
-
-| Parameter    | Example Values                   |
-| ------------ | -------------------------------- |
-| MTU          | 576 / 1200 / 1400 / 1500         |
-| Latency      | 5 / 20 / 50 / 100 ms             |
-| Jitter       | 0 / 5 / 20 ms                    |
-| Packet Loss  | 0 / 0.1 / 1 / 5%                 |
-| Reordering   | 0 / 1 / 5%                       |
-| Bandwidth    | 10 / 50 / 100 / 500 Mbps         |
-| Applications | VoIP / HTTP / DNS / Video / Bulk |
-
-This provides a stronger measure of real-world generalization.
-
----
-
-# 11. Streaming Inference
-
-The ML engine is designed for incremental inference instead of waiting for an entire flow.
-
-```mermaid
-flowchart LR
-
-    A["ESP Packet"] --> B["Flow State"]
-
-    B --> C["Rolling Sequence Buffer"]
-
-    C --> D["Window 1"]
-    C --> E["Window 2"]
-    C --> F["Window N"]
-
-    D --> G["ML Inference"]
-    E --> G
-    F --> G
-
-    G --> H["Prediction Timeline"]
-```
-
-Example:
-
-```text
-Packet 1–32     → Prediction 1
-Packet 33–64    → Prediction 2
-Packet 65–96    → Prediction 3
-...
-```
-
-The flow state maintains:
-
-```text
-packet_count
-last_timestamp
-rolling_statistics
-sequence_buffer
-current_embedding
-prediction_history
-OOD_score
-anomaly_score
-```
-
----
-
-# 12. Production ML Optimization
-
-The inference stack can be optimized through:
-
-```mermaid
-flowchart LR
-
-    A["PyTorch Model"] --> B["ONNX Export"]
-
-    B --> C["ONNX Runtime"]
-
-    C --> D1["FP32"]
-    C --> D2["FP16"]
-    C --> D3["INT8"]
-
-    D1 --> E["Benchmark"]
-    D2 --> E
-    D3 --> E
-
-    E --> F["Production Streaming Inference"]
-```
-
-Benchmarks should report:
-
-* p50 latency
-* p95 latency
-* p99 latency
-* Throughput
-* CPU utilization
-* GPU utilization
-* GPU memory
-* Model size
-
-The project does not equate model inference throughput with complete 10-Gbps packet-processing capability; end-to-end performance must include capture, flow aggregation, feature extraction, and inference.
-
----
-
-# 13. Explainability
-
-The system retains explainability for both classical and deep models.
-
-### Classical ML
-
-SHAP provides feature-level explanations:
-
-```text
-High contribution:
-    constant IAT
-    packet-size distribution
-    directionality
-```
-
-### Deep ML
-
-The system can additionally expose:
-
-* Temporal saliency
-* Attention weights
-* Important packet windows
-* Feature attribution
-* OOD distance
-* Anomaly score
-
-Example:
-
-```text
-Prediction:
-    VoIP
-
-Evidence:
-    Stable IAT
-    Small packet-size variance
-    Periodic bidirectional bursts
-
-Confidence:
-    0.91
-
-OOD Score:
-    Low
-
-Decision:
-    Known Application
-```
-
----
-
-# 14. Decision Engine
-
-The final output is not simply:
-
-```text
-class = VoIP
-```
-
-Instead:
-
-```json
-{
-  "classification": "VoIP",
-  "confidence": 0.91,
-  "ood_score": 0.08,
-  "anomaly_score": 0.12,
-  "decision": "known",
-  "abstained": false
-}
-```
-
-Possible decisions:
-
-```text
-KNOWN
-UNKNOWN
-SUSPICIOUS
-ABSTAIN
-```
-
-The decision layer combines:
-
-```text
-classification confidence
-+
-OOD score
-+
-anomaly score
-+
-minimum observation threshold
-```
-
----
-
-# Project Structure
-
-```text
-ipsec-sentinel/
-│
-├── src/
-│   └── ipsec_sentinel/
-│       │
-│       ├── capture/
-│       │   └── ...
-│       │
-│       ├── parser/
-│       │   ├── ike.py
-│       │   └── esp.py
-│       │
-│       ├── features/
-│       │   ├── flow.py
-│       │   ├── statistics.py
-│       │   ├── temporal.py
-│       │   └── spectral.py
-│       │
-│       ├── ml/
-│       │   │
-│       │   ├── baseline/
-│       │   │   ├── xgboost.py
-│       │   │   └── random_forest.py
-│       │   │
-│       │   ├── sequence/
-│       │   │   ├── cnn.py
-│       │   │   ├── tcn.py
-│       │   │   ├── lstm.py
-│       │   │   ├── transformer.py
-│       │   │   └── encoder.py
-│       │   │
-│       │   ├── ssl/
-│       │   │   ├── augmentations.py
-│       │   │   ├── contrastive.py
-│       │   │   ├── pretrain.py
-│       │   │   └── embeddings.py
-│       │   │
-│       │   ├── anomaly/
-│       │   │   ├── isolation_forest.py
-│       │   │   ├── deep_svdd.py
-│       │   │   ├── mahalanobis.py
-│       │   │   └── ensemble.py
-│       │   │
-│       │   ├── ood/
-│       │   │   ├── energy.py
-│       │   │   ├── mahalanobis.py
-│       │   │   └── calibration.py
-│       │   │
-│       │   ├── robustness/
-│       │   │   ├── morphing.py
-│       │   │   ├── adversarial.py
-│       │   │   └── evaluation.py
-│       │   │
-│       │   ├── deployment/
-│       │   │   ├── streaming.py
-│       │   │   ├── export_onnx.py
-│       │   │   └── benchmark.py
-│       │   │
-│       │   ├── train.py
-│       │   ├── classify.py
-│       │   └── explain.py
-│       │
-│       └── reporting/
-│
-├── tests/
-│   ├── parser/
-│   ├── features/
-│   └── ml/
-│
-├── experiments/
-│   ├── sequence_models/
-│   ├── ssl/
-│   ├── ood/
-│   ├── anomaly/
-│   ├── robustness/
-│   └── deployment/
-│
-├── testbed/
-│   ├── docker/
-│   ├── strongswan/
-│   └── netem/
-│
-├── configs/
-│
-├── benchmarks/
-│
-├── docs/
-│   ├── DATASET.md
-│   ├── GENERALISATION.md
-│   ├── ML_ARCHITECTURE.md
-│   ├── OOD.md
-│   ├── ROBUSTNESS.md
-│   └── DEPLOYMENT.md
-│
-├── requirements.txt
-└── README.md
-```
-
----
-
-# ML Research Roadmap
-
-```mermaid
-flowchart LR
-
-    A["Existing XGBoost"] --> B["Temporal CNN"]
-    B --> C["TCN / BiLSTM"]
-    C --> D["Temporal Transformer"]
-
-    D --> E["Self-Supervised Pretraining"]
-
-    E --> F["Open-Set Recognition"]
-
-    F --> G["Anomaly Detection"]
-
-    G --> H["Traffic Morphing"]
-
-    H --> I["Adversarial Training"]
-
-    I --> J["Cross-Network Evaluation"]
-
-    J --> K["ONNX / TensorRT"]
-
-    K --> L["Streaming Production Inference"]
-```
-
----
-
-# 4-Week Implementation Plan
-
-## Week 1 — Temporal ML
-
-* Establish reproducible XGBoost baseline
-* Implement sequence extraction
-* Add packet-size/IAT/direction tensors
-* Implement 1D CNN
-* Implement TCN
-* Compare against baseline
-* Add temporal evaluation metrics
-
-## Week 2 — Self-Supervised + OOD
-
-* Implement flow augmentations
-* Build contrastive learning pipeline
-* Pretrain Flow Encoder
-* Fine-tune on labeled captures
-* Implement Mahalanobis OOD
-* Implement Isolation Forest
-* Add explicit abstention
-
-## Week 3 — Security ML
-
-* Implement anomaly detection
-* Add periodicity and spectral features
-* Build anomaly ensemble
-* Implement traffic morphing
-* Evaluate padding/jitter/dummy-packet attacks
-* Implement constrained adversarial training
-
-## Week 4 — Generalization + Deployment
-
-* Expand strongSwan/netem test matrix
-* Create environment-based train/test splits
-* Evaluate cross-network generalization
-* Export model to ONNX
-* Benchmark FP32/FP16/INT8
-* Implement sliding-window inference
-* Produce final latency/throughput benchmarks
-* Document research findings
-
----
-
-# Evaluation Framework
-
-The project evaluates more than classification accuracy.
-
-## Classification
-
-```text
-Macro-F1
-Balanced Accuracy
-Per-Class F1
-Confusion Matrix
-Expected Calibration Error
-Brier Score
-```
-
-## Open-Set Detection
-
-```text
-AUROC
-AUPR
-FPR@95TPR
-Detection Error
-```
-
-## Anomaly Detection
-
-```text
-ROC-AUC
-PR-AUC
-Precision@K
-Recall@K
-False Positive Rate
-```
-
-## Robustness
-
-```text
-Clean Macro-F1
-Morphed Macro-F1
-Performance Degradation
-Attack Success Rate
-```
-
-## Deployment
-
-```text
-p50 latency
-p95 latency
-p99 latency
-flows/sec
-CPU utilization
-GPU utilization
-GPU memory
-Model size
-```
-
----
-
-# Experimental Baselines
-
-Every new ML component should be compared against the original baseline.
-
-```text
-                ┌─────────────────┐
-                │ XGBoost Baseline│
-                └────────┬────────┘
-                         │
-        ┌────────────────┼────────────────┐
-        ▼                ▼                ▼
-      CNN               TCN          Transformer
-        │                │                │
-        └────────────────┼────────────────┘
-                         ▼
-                SSL Pretrained Encoder
-                         │
-             ┌───────────┼───────────┐
-             ▼           ▼           ▼
-           Class        OOD       Anomaly
-```
-
-Experiments should use environment-aware splits wherever possible.
-
----
-
-# Research Questions
-
-The upgraded project investigates:
-
-### RQ1
-
-Can temporal packet-sequence models outperform handcrafted flow statistics for encrypted IPsec traffic classification?
-
-### RQ2
-
-Can self-supervised learning reduce the amount of labeled encrypted traffic required for useful representations?
-
-### RQ3
-
-Can open-set recognition identify previously unseen encrypted traffic instead of forcing every flow into a known class?
-
-### RQ4
-
-Can flow-level behavioral features identify suspicious encrypted communication without inspecting payloads?
-
-### RQ5
-
-How robust are encrypted-traffic models against packet padding, timing jitter, and dummy-packet injection?
-
-### RQ6
-
-Can protocol-aware synthetic augmentation improve generalization to unseen network environments?
-
-### RQ7
-
-Can the resulting models meet practical streaming inference requirements after ONNX/TensorRT optimization?
-
----
-
-# Security Boundary
-
-IPsec Sentinel is a passive traffic-analysis and security-auditing system.
-
-The ML subsystem:
-
-* Does not decrypt ESP payloads
-* Does not inspect application payload content
-* Does not reconstruct encrypted application data
-* Does not claim semantic knowledge unavailable from metadata
-* Reports probabilistic estimates separately from deterministic protocol facts
-* Abstains when insufficient evidence is available
-
-The system is designed for defensive security research, network monitoring, auditing, and controlled experimentation.
-
----
-
-# Current vs Target Architecture
-
-| Capability                  | Existing |       Target |
-| --------------------------- | -------: | -----------: |
-| IKE deterministic parsing   |      Yes |          Yes |
-| Crypto rule analysis        |      Yes |          Yes |
-| Handcrafted flow features   |      Yes |          Yes |
-| XGBoost/RF                  |      Yes |          Yes |
-| SHAP                        |      Yes |          Yes |
-| Temporal CNN                |       No |          Yes |
-| TCN                         |       No |          Yes |
-| BiLSTM                      |       No |     Optional |
-| Transformer                 |       No |          Yes |
-| Self-supervised learning    |       No |          Yes |
-| Open-set recognition        |       No |          Yes |
-| OOD detection               |  Limited |          Yes |
-| Anomaly detection           |       No |          Yes |
-| C2/beacon behavior analysis |       No | Experimental |
-| Traffic morphing evaluation |       No |          Yes |
-| Adversarial training        |       No |          Yes |
-| Synthetic flow generation   |       No | Experimental |
-| Cross-network evaluation    |  Limited |          Yes |
-| ONNX deployment             |       No |          Yes |
-| TensorRT optimization       |       No | Experimental |
-| Streaming inference         |  Limited |          Yes |
-
----
-
-# Project Vision
-
-IPsec Sentinel aims to evolve from a traditional encrypted-traffic classifier into a broader **Encrypted Traffic Intelligence and Security Analytics Platform**.
-
-```mermaid
-flowchart TB
-
-    A["Encrypted IPsec Traffic"] --> B["Observable Metadata"]
-
-    B --> C["Representation Learning"]
-
-    C --> D["Behavior Understanding"]
-
-    D --> E1["Application Classification"]
-    D --> E2["Open-Set Detection"]
-    D --> E3["Security Anomaly Detection"]
-
-    E1 --> F["Evidence-Aware Decision"]
-    E2 --> F
-    E3 --> F
-
-    F --> G["Passive Security Intelligence"]
-
-    G --> H["Explainable / Auditable Findings"]
-```
-
-The long-term objective is not simply to achieve a higher classification score.
-
-It is to build an ML system that can answer:
-
-> **What can we reliably infer from encrypted IPsec traffic, how uncertain are we, and when does observed behavior deviate from what the model has learned?**
-
----
-
-# Disclaimer
-
-This project is intended for authorized security research, defensive network monitoring, protocol analysis, and controlled laboratory experimentation.
-
-All active testing, traffic generation, adversarial evaluation, and network experiments should be performed only on systems and networks for which the operator has explicit authorization.
+Developed by **Team Highlanders** for **Smart India Hackathon (SIH) 2026**.  
+Problem Statement: **160** — *Passive IPsec Protocol Analysis and Security Assessment*.
