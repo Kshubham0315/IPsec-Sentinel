@@ -1,145 +1,67 @@
-Aapke README.md ke upgraded research roadmap ke mutabiq, pure project ko 4 core phases me divide kiya gaya hai:
+🗺️ Master Implementation Roadmap (Phases 1 to 4)
+mermaid
+flowchart LR
+    P1["Phase 1 (Week 1)<br/><b>Temporal Sequence ML</b><br/>(CNN, TCN, Packet Tensors)"] 
+    --> P2["Phase 2 (Week 2)<br/><b>Self-Supervised & OOD</b><br/>(Contrastive SSL, Open-Set)"]
+    --> P3["Phase 3 (Week 3)<br/><b>Security & Robustness</b><br/>(Anomaly, C2, Traffic Morphing)"]
+    --> P4["Phase 4 (Week 4)<br/><b>Production Streaming</b><br/>(ONNX, NetEm Generalization)"]
+🟢 PHASE 1: Temporal Packet-Sequence Modeling (Immediate Next)
+Goal: Handcrafted tabular 42 features (XGBoost) ke sath-sath raw packet sequences se deep temporal patterns (burst dynamics, inter-arrival jitter, directionality transitions) learn karna.
 
-Phase 1 (Week 1): Temporal ML & Sequence Modeling (1D-CNN, TCN, Packet-Sequence Tensors)
-Phase 2 (Week 2): Self-Supervised Representation Learning & Open-Set / OOD Detection
-Phase 3 (Week 3): Security Anomaly Detection, Traffic Morphing & Adversarial Robustness
-Phase 4 (Week 4): Cross-Network Generalization, ONNX / Streaming Production Deployment
-Neeche Phase 1: Temporal Packet-Sequence Modeling & Deep Flow Encoders ka complete, structured aur actionable distribution (step-by-step breakdown) hai:
-
-🚀 Phase 1: Temporal ML & Sequence Modeling (Week 1)
-Phase 1 ka primary goal hai: Handcrafted 42 tabular features (XGBoost/RF) se aage badhkar raw temporal packet sequences se deep temporal patterns (bursts, jitter, directionality transitions) ko learn karna.
-
-                          ESP Flow Packet Stream
-                                    │
-                                    ▼
-       ┌────────────────────────────────────────────────────────┐
-       │ Step 1.1: Sequence Extraction & Tensor Pipeline        │
-       │ - [size, IAT, direction] per packet                    │
-       │ - Sliding Windows (N = 64, 128, 256)                   │
-       │ - Zero-padding & Attention / Validity Masks            │
-       └────────────────────────────┬───────────────────────────┘
-                                    │
-                  ┌─────────────────┴─────────────────┐
-                  ▼                                   ▼
-   ┌─────────────────────────────┐     ┌─────────────────────────────┐
-   │ Step 1.2: Baseline Benchmark│     │ Step 1.3: Deep Sequence     │
-   │ - Existing Tabular XGBoost  │     │           Encoders          │
-   │ - Grouped Cross-Validation  │     │ - 1D-CNN (Local bursts)     │
-   │ - Baseline Macro-F1 & ECE   │     │ - TCN (Dilated long-range)  │
-   │                             │     │ - Flow Embedding (d = 128)  │
-   └──────────────┬──────────────┘     └──────────────┬──────────────┘
-                  │                                   │
-                  └─────────────────┬─────────────────┘
-                                    │
-                                    ▼
-       ┌────────────────────────────────────────────────────────┐
-       │ Step 1.4: Training Pipeline & Loss Calibration         │
-       │ - PyTorch Training Loop, AdamW, Cosine Annealing       │
-       │ - GroupKFold (zero cross-capture data leakage)         │
-       └────────────────────────────┬───────────────────────────┘
-                                    │
-                                    ▼
-       ┌────────────────────────────────────────────────────────┐
-       │ Step 1.5: Comparative Evaluation & CLI Integration     │
-       │ - Tabular vs 1D-CNN vs TCN Benchmark Report            │
-       │ - CLI: `sentinel model train-sequence`                 │
-       │ - Complete Unit Tests & Lint Passes                    │
-       └────────────────────────────────────────────────────────┘
-📋 Phase 1 Detailed Task Breakdown
-🔹 Milestone 1.1: Sequence Data Extraction & Tensor Pipeline
-Files to create/modify:
-
-src/ipsec_sentinel/features/sequence.py (New)
-src/ipsec_sentinel/features/dataset.py (Extend)
-Tasks:
-
-Raw Packet-Level Sequence Extractor:
-Har encrypted ESP flow se ordered sequence extract karna: $$\mathbf{x}_i = [\text{packet_size}_i, ;; \Delta t_i (\text{inter_arrival_time}), ;; d_i (\text{direction} \in {+1, -1})]$$
-Windowing & Padding:
-Configurable fixed window lengths: $N \in {64, 128, 256}$.
-Flows shorter than $N$: Right zero-padding + binary attention mask ($1$ for valid packet, $0$ for pad).
-Long flows: Non-overlapping ya rolling sliding windows.
-Feature Scaling / Normalization:
-packet_size: Normalized by link MTU ($1500$ bytes).
-inter_arrival_time: Log-scaled $\log_{10}(\Delta t + 10^{-6})$ ya clipped min-max.
-direction: Binary float $(+1.0, -1.0)$.
-PyTorch Dataset Adapter:
-IPsecSequenceDataset (inherits torch.utils.data.Dataset) jo tensors (batch, channels=3, seq_len=N) yield kare.
-🔹 Milestone 1.2: Tabular Baseline Benchmark (Rigorous Ground Truth)
-Files to create/modify:
-
-src/ipsec_sentinel/ml/baseline.py (Or utilize src/ipsec_sentinel/ml/train.py)
-Tasks:
-
-Grouped cross-validation (by capture_id) par current XGBoost aur Random Forest models ka baseline record karna.
-Standardized evaluation metrics collect karna:
-Macro-F1 (Overall & Per-Class for VoIP, Video, Web, Email, Messaging, ICMP, Replay)
-Balanced Accuracy
-Expected Calibration Error (ECE)
-Inference Latency per flow
-Baseline numbers ko models/baseline_benchmark.json me save karna taki deep models se apple-to-apple comparison ho sake.
-🔹 Milestone 1.3: Deep Temporal Sequence Encoders
-Files to create:
-
-src/ipsec_sentinel/ml/sequence/__init__.py
-src/ipsec_sentinel/ml/sequence/cnn.py
+Milestone	File / Module	Kya Implement Hoga?
+1.1 Sequence Tensor Pipeline	src/ipsec_sentinel/features/sequence.py	• Har ESP packet se 3-tuple extract karna: [packet_size, IAT, direction]
+• Sliding windows ($N = 64, 128, 256$ packets)
+• Zero-padding aur validity/attention masks for short flows
+• PyTorch Dataset & DataLoader integration
+1.2 Tabular Baseline Benchmarking	src/ipsec_sentinel/ml/baseline.py	• Existing XGBoost / Random Forest ka grouped cross-validation score freeze karna (Macro-F1, ECE, Latency)
+• Deep models se compare karne ke liye ground truth file save karna
+1.3 Deep Sequence Encoders	src/ipsec_sentinel/ml/sequence/cnn.py
 src/ipsec_sentinel/ml/sequence/tcn.py
-src/ipsec_sentinel/ml/sequence/models.py (Shared backbone & classification heads)
-Tasks:
+src/ipsec_sentinel/ml/sequence/models.py	• 1D-CNN: Multi-kernel convolutions (3, 5, 7) burst patterns capture karne ke liye
+• TCN: Dilated causal convolutions ($d=1,2,4,8,16$) long-range beaconing ke liye
+• 128-dimensional unified Flow Embedding vector export
+1.4 Sequence Training Engine	src/ipsec_sentinel/ml/sequence/train.py	• PyTorch training loop (AdamW, Cosine Annealing, Class-weighted CrossEntropy)
+• Capture-grouped splitting taaki test data me data leakage na ho
+1.5 Comparative Evaluation & CLI	src/ipsec_sentinel/ml/sequence/evaluate.py
+src/ipsec_sentinel/cli.py	• sentinel model train-sequence --arch tcn
+• Tabular XGBoost vs 1D-CNN vs TCN comparative report
+🟡 PHASE 2: Self-Supervised Learning & Open-Set (OOD) Detection (Week 2)
+Goal: Labeled data ki kami ko door karna aur anjaan (unknown) traffic aane par galat guess lagane ke bajaye "Unknown" ya "Abstain" bolna.
 
-1D-CNN Encoder (cnn.py):
-Multiple 1D convolutional layers with kernel sizes 3, 5, 7 to capture local packet-size burst patterns.
-Structure: Conv1d -> BatchNorm1d -> GELU/ReLU -> MaxPool1d -> Dropout.
-Global Average Pooling / Adaptive Pooling $\to$ Flow Embedding Vector ($\mathbb{R}^{128}$).
-Temporal Convolutional Network - TCN (tcn.py):
-Dilated Causal Convolutions with dilation factors $d \in [1, 2, 4, 8, 16]$.
-Residual connections & weight normalization / LayerNorm.
-Large receptive field jo periodic beaconing aur long-range burst intervals capture kare without recurrent bottlenecks.
-Classification & Embedding Head:
-Modular architecture: $$\text{Sequence Tensor} \xrightarrow{\text{Temporal Encoder}} \text{Flow Embedding } \mathbf{z} \in \mathbb{R}^{128} \xrightarrow{\text{Classifier Head}} \text{Logits } \in \mathbb{R}^{7}$$
-Yeh Flow Embedding baad me Phase 2 (Self-Supervised & OOD) aur Phase 3 (Anomaly Detection) me reuse hogi.
-🔹 Milestone 1.4: Sequence Training Engine
-Files to create:
+Component	File / Module	Kya Implement Hoga?
+Self-Supervised Pretraining (SSL)	src/ipsec_sentinel/ml/ssl/augmentations.py
+src/ipsec_sentinel/ml/ssl/contrastive.py	• Unlabeled encrypted flows par Contrastive Learning (SimCLR style)
+• Protocol-aware data augmentations (timing jitter, packet masking, MTU-constrained size perturbations)
+• Pretrained Flow Encoder jo bina labels ke traffic representations seekh sake
+Open-Set / OOD Detection	src/ipsec_sentinel/ml/ood/mahalanobis.py
+src/ipsec_sentinel/ml/ood/energy.py	• Test traffic sample agar 7 known classes se bahar ka ho, to use detect karna
+• Mahalanobis distance & Energy-based scoring layer
+Decision & Abstention Engine	src/ipsec_sentinel/ml/decision.py	• Final decision logic: KNOWN, UNKNOWN, SUSPICIOUS, ya ABSTAIN ("Insufficient Evidence")
+🟠 PHASE 3: Security Anomaly Detection & Traffic Morphing Robustness (Week 3)
+Goal: Encrypted tunnels ke andar malicious behavior (C2 beacons, Exfiltration) pakadna, aur adversarial attacks (traffic padding/morphing) se model ko defend karna.
 
-src/ipsec_sentinel/ml/sequence/train.py
-Tasks:
+Component	File / Module	Kya Implement Hoga?
+Encrypted Flow Anomaly Detection	src/ipsec_sentinel/ml/anomaly/deep_svdd.py
+src/ipsec_sentinel/ml/anomaly/ensemble.py	• Application classification se alag Security Anomaly Detection
+• Deep SVDD + Isolation Forest ensemble
+• Exfiltration flows (abnormal upload-heavy) aur covert channels identify karna
+Periodicity & Spectral Analysis	src/ipsec_sentinel/features/spectral.py	• FFT-based dominant frequency, autocorrelation, aur burst interval analysis (Cobalt Strike / C2 beaconing detection)
+Traffic Morphing Engine	src/ipsec_sentinel/ml/robustness/morphing.py	• Adversarial evasion simulator: Packet padding, dummy packet injection, timing jitter
+• Test karna ki kya attacker model ko fool kar sakta hai
+Adversarial Training	src/ipsec_sentinel/ml/robustness/adversarial.py	• Morphed traffic ke sath model ko retrain karna taaki model tamper-proof ban sake
+🟣 PHASE 4: Generalization, ONNX Optimization & Streaming Inference (Week 4)
+Goal: Laboratory se nikaal kar production enterprise network me high-throughput deployment ready karna.
 
-Leakage-Proof Data Splitting:
-GroupKFold partitioning by capture_id taaki ek capture ke packets train aur test dono me leak na hon.
-Training Loop & Optimization:
-Optimizer: AdamW(lr=1e-3, weight_decay=1e-2).
-Scheduler: CosineAnnealingLR with warmup.
-Loss Function: CrossEntropyLoss with class-weighting (dataset me minor classes jaise ICMP/Replay ko handle karne ke liye).
-Early stopping on validation Macro-F1.
-Model Checkpointing & Provenance:
-Weights .pt format me save karna along with metadata JSON (checksum, git commit, input dimensions, class mapping).
-🔹 Milestone 1.5: Comparative Evaluation & CLI Command
-Files to create/modify:
+Component	File / Module	Kya Implement Hoga?
+Cross-Network Generalization	testbed/netem/
+scripts/generalisation_report.py	• Linux NetEm ke through alag-alag MTU (576, 1200, 1500), Latency (5ms to 100ms), aur Packet Loss par model ki robustness evaluate karna
+Production ONNX Export	src/ipsec_sentinel/ml/deployment/export_onnx.py	• PyTorch models ko ONNX format me convert karna
+• FP32, FP16, aur INT8 quantization benchmarks (p50, p95, p99 latency)
+Real-Time Streaming Inference	src/ipsec_sentinel/ml/deployment/streaming.py	• Flow khatam hone ka wait kiye bina first 32, 64 packets aate hi live streaming predictions generate karna
+🎯 Abhi Hum Kahan Hain Aur Next Kya Shuru Karein?
+Hum bilkul Phase 1 ke Milestone 1.1 par khade hain:
 
-src/ipsec_sentinel/ml/sequence/evaluate.py
-src/ipsec_sentinel/cli.py (Naye commands: sentinel model train-sequence, sentinel model compare)
-tests/unit/test_sequence.py
-tests/unit/test_sequence_models.py
-Tasks:
-
-Comparison Report:
-Tabular XGBoost vs 1D-CNN vs TCN comparative summary print karna:
-text
-Model         Macro-F1   Bal-Acc    Params    p50 Latency
-XGBoost       0.892      0.884      —         0.4 ms
-1D-CNN        0.918      0.912      48.2K     1.2 ms
-TCN           0.941      0.936      112.5K    2.1 ms
-Unit & Property Tests:
-Deterministic tensor extraction tests.
-Shape integrity tests (batch size, channel count, sequence length).
-Invariance to empty / padded sequences.
-Code formatting aur linting: make lint aur make type clean rakhna.
-🎯 Deliverables of Phase 1 (End State)
-src/ipsec_sentinel/features/sequence.py — ESP packet sequence tensor builder.
-src/ipsec_sentinel/ml/sequence/ — 1D-CNN & TCN implementations in PyTorch.
-sentinel model train-sequence — Command-line tool sequence models train aur benchmark karne ke liye.
-Comprehensive test coverage for all sequence components.
-First research question answered: RQ1 — Can temporal packet-sequence models outperform handcrafted flow statistics for encrypted IPsec traffic?
-Aap kaise start karna chahte hain?
-Milestone 1.1 se start karein: features/sequence.py (raw packet-to-tensor extraction & dataset builder) implement karna?
-Ya aap pehle dependencies (pyproject.toml me torch dependency entry) aur directory structure setup karna chahte hain?
+src/ipsec_sentinel/features/sequence.py file banayenge.
+Har ESP packet se sequence tensor builder ([size, IAT, direction]) aur sliding window engine likhenge.
+Uske tests likhkar verify karenge.
+Kya main Phase 1 -> Milestone 1.1 (sequence.py) likhna shuru karoon?
